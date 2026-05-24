@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}New user — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'accounts:users_list' %}">&larr; Users</a></p>
+  <h1>New user</h1>
+  <p class="meta">
+    A new <strong>regular</strong> user is created instantly. A new
+    <strong>superadmin</strong> requires a second superadmin to approve
+    via the two-person rule.
+  </p>
+</div>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<p class="status error">{{ form.non_field_errors|join:" " }}</p>{% endif %}
+    <div class="field">
+      <label for="id_email">Email</label>
+      {{ form.email }}
+      {% if form.email.errors %}<p class="status error">{{ form.email.errors|join:" " }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="id_display_name">Display name</label>
+      {{ form.display_name }}
+      {% if form.display_name.errors %}<p class="status error">{{ form.display_name.errors|join:" " }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="id_role">Role</label>
+      {{ form.role }}
+      {% if form.role.errors %}<p class="status error">{{ form.role.errors|join:" " }}</p>{% endif %}
+    </div>
+    <button type="submit">Create</button>
+    <a href="{% url 'accounts:users_list' %}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+{% endblock %}

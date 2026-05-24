@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/zer0tru5t0ffsec/ztops/blob/main/SECURITY.md
+    about: >-
+      Do NOT open a public issue for security problems. Email
+      security@zerotrustoffsec.com — see SECURITY.md for the full policy and
+      safe-harbor terms.

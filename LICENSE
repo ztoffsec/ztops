@@ -1,0 +1,36 @@
+ZTOps — Proprietary License (Source-Available)
+
+Copyright (c) 2026 Zero Trust Offsec. All rights reserved.
+
+This source code is published for transparency, independent security
+review, and good-faith vulnerability reporting. It is NOT open source and
+NO open-source license is granted.
+
+Permitted without prior written permission:
+
+  - Viewing and reading the source code.
+  - Privately cloning the repository solely to review the code or to
+    prepare a good-faith security report (see SECURITY.md).
+
+NOT permitted without prior written permission from Zero Trust Offsec:
+
+  - Use, execution, hosting, or deployment of the software, in whole or in
+    part, for any purpose.
+  - Copying, modification, redistribution, sublicensing, or creation of
+    derivative works.
+  - Any commercial or non-commercial use beyond the review/reporting
+    purposes stated above.
+
+No trademark, patent, or other intellectual-property rights are granted by
+this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+Licensing inquiries:  jrivas@zerotrustoffsec.com
+Security reports:     security@zerotrustoffsec.com  (see SECURITY.md)

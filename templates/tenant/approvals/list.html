@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Approvals — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Approvals</h1>
+  <p class="meta">
+    Two-person rule for privileged actions. You cannot approve or deny your own requests.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Actionable ({{ actionable|length }})</h2>
+  <p class="meta">Pending requests from other superadmins. Open each to approve or deny.</p>
+
+  {% if actionable %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>Requested</th>
+        <th>Action</th>
+        <th>Requested by</th>
+        <th>Expires</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ap in actionable %}
+      <tr>
+        <td data-label="Requested">{{ ap.created_at|date:"Y-m-d H:i" }} UTC</td>
+        <td class="mono" data-label="Action">{{ ap.action }}</td>
+        <td data-label="Requested by">{{ ap.requested_by.email }}</td>
+        <td data-label="Expires">{{ ap.expires_at|date:"Y-m-d H:i" }} UTC</td>
+        <td class="actions"><a href="{% url 'approvals:detail' ap.id %}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No actionable approvals.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Your requests ({{ own|length }})</h2>
+  <p class="meta">The 25 most recent approval requests you initiated.</p>
+
+  {% if own %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>Created</th>
+        <th>Action</th>
+        <th>State</th>
+        <th>Decided by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ap in own %}
+      <tr>
+        <td data-label="Created">{{ ap.created_at|date:"Y-m-d H:i" }} UTC</td>
+        <td class="mono" data-label="Action">{{ ap.action }}</td>
+        <td data-label="State"><span class="pill">{{ ap.state }}</span></td>
+        <td data-label="Decided by">
+          {% if ap.approved_by %}{{ ap.approved_by.email }}
+          {% elif ap.denied_by %}{{ ap.denied_by.email }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="actions"><a href="{% url 'approvals:detail' ap.id %}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">You have no recent requests.</p>
+  {% endif %}
+</div>
+{% endblock %}

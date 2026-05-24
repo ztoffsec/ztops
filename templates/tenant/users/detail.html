@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ target.display_name }} — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .enroll-url {
+    padding: 1rem;
+    border: 1px solid var(--success);
+    border-radius: 6px;
+    background: var(--bg);
+    word-break: break-all;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'accounts:users_list' %}">&larr; Users</a></p>
+  <h1>{{ target.display_name }}</h1>
+  <p class="meta">
+    <span class="mono">{{ target.email }}</span>
+    &middot; <span class="pill role-{{ target.role }}">{{ target.role }}</span>
+    &middot; {% if target.is_active %}active{% else %}inactive{% endif %}
+  </p>
+</div>
+
+{% if issued_url %}
+<div class="card">
+  <h2>Enrollment URL (shown once)</h2>
+  <p class="meta">
+    Copy this URL and send it to <strong>{{ target.email }}</strong> over
+    a secure channel. They open it in a browser to register a passkey.
+    The token is single-use and expires in 24h.
+  </p>
+  <p class="enroll-url">{{ issued_url }}</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Account</h2>
+  <table>
+    <tbody>
+      <tr><th>Created</th><td>{{ target.created_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      <tr><th>Last sign-in</th><td>{{ target.last_login|date:"Y-m-d H:i"|default:"—" }}{% if target.last_login %} UTC{% endif %}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Passkeys ({{ credentials|length }})</h2>
+  {% if credentials %}
+  <table class="table-cards">
+    <thead>
+      <tr><th>ID</th><th>Transports</th><th>Registered</th><th>Last used</th></tr>
+    </thead>
+    <tbody>
+      {% for c in credentials %}
+      <tr>
+        <td class="mono" data-label="ID">{{ c.id|stringformat:"s"|slice:":13" }}…</td>
+        <td data-label="Transports">{{ c.transports|join:", "|default:"—" }}</td>
+        <td data-label="Registered">{{ c.created_at|date:"Y-m-d H:i" }} UTC</td>
+        <td data-label="Last used">{{ c.last_used_at|date:"Y-m-d H:i"|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="subtle">No passkeys registered yet.</p>
+  {% endif %}
+
+  <form method="post" action="{% url 'accounts:user_issue_enrollment' target.id %}" class="deny-form">
+    {% csrf_token %}
+    <button type="submit">Issue enrollment URL</button>
+  </form>
+
+  {% if pending_tokens %}
+  <p class="meta" style="margin-top: 0.75rem">
+    {{ pending_tokens|length }} unused enrollment token{{ pending_tokens|length|pluralize }}
+    issued earlier (24h TTL). Issuing a new one is fine — old tokens stay valid
+    until used or expired.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

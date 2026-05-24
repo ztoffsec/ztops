@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Review queue — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Review queue</h1>
+  <p class="meta">
+    {{ open_count }} finding{{ open_count|pluralize }} awaiting review or in
+    progress. Approve to publish to the global feed; reject to keep the
+    report private to the reporter + reviewers.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Open ({{ open_findings|length }})</h2>
+  {% if open_findings %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Vendor</th>
+        <th>Reporter</th>
+        <th>Severity</th>
+        <th>State</th>
+        <th>Submitted</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in open_findings %}
+      <tr>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}?tab=review">{{ f.internal_id }}</a></td>
+        <td data-label="Title"><a href="{% url 'findings:detail' f.id %}?tab=review">{{ f.title }}</a></td>
+        <td data-label="Vendor">{% if f.vendor %}<a href="{% url 'vendors:detail' f.vendor.slug %}">{{ f.vendor.name }}</a>{% else %}—{% endif %}</td>
+        <td class="subtle" data-label="Reporter">{{ f.reported_by.display_name|default:f.reported_by_email }}</td>
+        <td data-label="Severity"><span class="pill sev-{{ f.severity }}">{{ f.get_severity_display }}</span></td>
+        <td data-label="State"><span class="pill review-{{ f.review_state }}">{{ f.get_review_state_display }}</span></td>
+        <td class="subtle" data-label="Submitted">{{ f.created_at|date:"Y-m-d H:i" }}</td>
+        <td class="actions"><a href="{% url 'findings:detail' f.id %}?tab=review">Review</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">Nothing in the queue. All caught up.</p>
+  {% endif %}
+</div>
+
+{% if closed_findings %}
+<div class="card">
+  <h2>Recently decided ({{ closed_findings|length }})</h2>
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Reporter</th>
+        <th>Decision</th>
+        <th>Decided by</th>
+        <th>Decided at</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in closed_findings %}
+      <tr>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}?tab=review">{{ f.internal_id }}</a></td>
+        <td data-label="Title"><a href="{% url 'findings:detail' f.id %}?tab=review">{{ f.title }}</a></td>
+        <td class="subtle" data-label="Reporter">{{ f.reported_by.display_name|default:f.reported_by_email }}</td>
+        <td data-label="Decision"><span class="pill review-{{ f.review_state }}">{{ f.get_review_state_display }}</span></td>
+        <td class="subtle" data-label="Decided by">{% if f.reviewed_by %}{{ f.reviewed_by.display_name|default:f.reviewed_by.email }}{% else %}—{% endif %}</td>
+        <td class="subtle" data-label="Decided at">{{ f.reviewed_at|date:"Y-m-d H:i"|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

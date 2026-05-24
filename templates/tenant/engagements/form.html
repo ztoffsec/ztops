@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "create" %}New engagement{% else %}Edit {{ engagement.slug }}{% endif %} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta">
+    <a href="{% if mode == 'edit' %}{% url 'engagements:detail' engagement.id %}{% else %}{% url 'engagements:list' %}{% endif %}">&larr; Back</a>
+  </p>
+  <h1>{% if mode == "create" %}New engagement{% else %}Edit {{ engagement.slug }}{% endif %}</h1>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+
+  {% if form.errors %}
+  <div class="status error">Form has errors. Fix the highlighted fields below.</div>
+  {% endif %}
+
+  <div class="field-grid">
+    <div class="field">
+      <label for="{{ form.slug.id_for_label }}">Slug</label>
+      {{ form.slug }}
+      {{ form.slug.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.name.id_for_label }}">Name</label>
+      {{ form.name }}
+      {{ form.name.errors }}
+    </div>
+  </div>
+
+  <div class="field-grid">
+    <div class="field">
+      <label for="{{ form.engagement_type.id_for_label }}">Type</label>
+      {{ form.engagement_type }}
+    </div>
+    <div class="field">
+      <label for="{{ form.status.id_for_label }}">Status</label>
+      {{ form.status }}
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="{{ form.target_vendor.id_for_label }}">Target vendor</label>
+    {{ form.target_vendor }}
+  </div>
+
+  <div class="field">
+    <label for="{{ form.description.id_for_label }}">Description</label>
+    {{ form.description }}
+  </div>
+
+  <div class="field-grid">
+    <div class="field">
+      <label for="{{ form.started_at.id_for_label }}">Started</label>
+      {{ form.started_at }}
+    </div>
+    <div class="field">
+      <label for="{{ form.completed_at.id_for_label }}">Completed</label>
+      {{ form.completed_at }}
+    </div>
+  </div>
+
+  <button type="submit">{% if mode == "create" %}Create engagement{% else %}Save changes{% endif %}</button>
+</form>
+{% endblock %}

@@ -1,0 +1,141 @@
+[project]
+name = "ztops"
+version = "0.0.0"
+description = "Zero Trust Offsec — collaborative offsec reporting & disclosure-tracking platform."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "Jose Rivas (bl4cksku11)", email = "jrivas@zerotrustoffsec.com" }]
+
+# All runtime deps pinned with a floor + upper bound. uv.lock is the source of truth.
+# No `*` versions. No git-installed deps. No unbounded ranges.
+dependencies = [
+    "django>=5.1,<6.0",
+    "djangorestframework>=3.15,<4.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "redis>=5.0,<6.0",
+    "celery>=5.4,<6.0",
+    "structlog>=24.4,<26.0",
+    "argon2-cffi>=23.1,<25.0",
+    "webauthn>=2.5,<3.0",
+    "cryptography>=46.0,<48.0",
+    # Explicit pin: webauthn pulls pyopenssl transitively; without a direct
+    # floor, uv resolves to 25.x which has CVE-2026-27448 / -27459 (fixed in 26.0.0).
+    "pyopenssl>=26.0,<27.0",
+    "django-ratelimit>=4.1,<5.0",
+    "bleach>=6.1,<7.0",
+    "markdown-it-py>=3.0,<4.0",
+    "pygments>=2.18,<3.0",
+    "gunicorn>=23.0,<24.0",
+    "uvicorn[standard]>=0.32,<0.40",
+    "python-dotenv>=1.0,<2.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7,<1.0",
+    "mypy>=1.13,<2.0",
+    "django-stubs[compatible-mypy]>=5.1,<6.0",
+    "djangorestframework-stubs[compatible-mypy]>=3.15,<4.0",
+    "bandit[toml]>=1.7,<2.0",
+    "pip-audit>=2.7,<3.0",
+    "pytest>=8.3,<10.0",
+    "pytest-django>=4.9,<5.0",
+    "pytest-cov>=6.0,<7.0",
+    "factory-boy>=3.3,<4.0",
+    "faker>=30.0,<40.0",
+    "pre-commit>=4.0,<5.0",
+    # Test-only: end-to-end virtual WebAuthn authenticator needs CBOR.
+    # webauthn pulls it transitively, but we declare it directly so the
+    # test suite doesn't break if upstream swaps implementations.
+    "cbor2>=5.6,<6.0",
+]
+
+# ztops is an application (deployed via systemd + Caddy), not a library published to PyPI.
+# Tell uv not to build a wheel for the project itself.
+[tool.uv]
+package = false
+
+# ---------- ruff ----------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations", "static", "templates"]
+
+[tool.ruff.lint]
+# Conservative starting set; tighten as the codebase matures.
+select = [
+    "E", "F", "W",          # pycodestyle + pyflakes
+    "I",                    # isort
+    "B",                    # bugbear
+    "S",                    # bandit-equivalent (subset)
+    "DJ",                   # django-specific
+    "UP",                   # pyupgrade
+    "SIM",                  # simplify
+    "RET",                  # return checks
+    "TID",                  # tidy imports
+    "PL",                   # pylint subset
+]
+ignore = [
+    "S101",                 # asserts allowed in tests
+    "PLR0913",              # function args — Django views are wide
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "PLR2004"]   # bandit rules and "magic value" warnings are noise in tests
+"**/migrations/**" = ["E501", "RUF"]
+"scripts/**" = ["S603", "S607"]
+"manage.py" = ["PLC0415"]          # Django's standard template keeps the django import scoped
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------- mypy (strict on core/security only, per project spec) ----------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+files = ["core/security"]
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_any_explicit = true
+
+# The django-stubs plugin walks the full Django model graph as part of its
+# initialization, which pulls in apps/* and config/* even when `files` is
+# scoped to core/security. We intentionally only enforce strict typing on
+# core/security/; downstream apps follow looser, idiomatic Django typing.
+[[tool.mypy.overrides]]
+module = ["apps.*", "config.*"]
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"
+
+# ---------- bandit ----------
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101"]  # asserts ok
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "*_test.py"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+# Coverage is wired in as a separate CI step once apps/ and core/ land
+# (Paso 2+). Keeping it out of the default addopts avoids "no data
+# collected" noise during Phase 1 bootstrapping.
+markers = [
+    "e2e: end-to-end browser/HTTP tests (slow)",
+]
+
+# ---------- coverage ----------
+[tool.coverage.run]
+branch = true
+omit = ["*/migrations/*", "*/tests/*", "manage.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "raise NotImplementedError"]

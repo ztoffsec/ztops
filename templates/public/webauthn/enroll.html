@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register your passkey — ZTOps</title>
+<style nonce="{{ request.csp_nonce }}">
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    max-width: 480px;
+    margin: 4rem auto;
+    padding: 2rem;
+    line-height: 1.5;
+  }
+  h1 { font-weight: 600; font-size: 1.5rem; margin: 0 0 0.5rem; }
+  .subtle { color: #666; font-size: 0.9rem; }
+  .who { margin: 1.5rem 0; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 4px; }
+  .who strong { font-weight: 600; }
+  button {
+    width: 100%;
+    padding: 0.85rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 500;
+    border: 1px solid #111;
+    background: #111;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { background: #000; }
+  button:disabled { background: #999; border-color: #999; cursor: not-allowed; }
+  #status { margin-top: 1.25rem; font-size: 0.95rem; }
+  #status.error { color: #b00020; }
+  #status.success { color: #047857; }
+</style>
+</head>
+<body>
+<h1>Register your passkey</h1>
+<p class="subtle">Your account is provisioned. Register a passkey from this device to finish setup.</p>
+
+<div class="who">
+  <div><strong>{{ display_name }}</strong></div>
+  <div class="subtle">{{ email }}</div>
+</div>
+
+<button type="button" id="register-btn">Register passkey</button>
+<output id="status"></output>
+
+{# json_script renders the value as <script type="application/json">, #}
+{# which is safer than interpolating into a real <script> body. #}
+{{ token|json_script:"enroll-token" }}
+
+<script nonce="{{ request.csp_nonce }}">
+(() => {
+  const TOKEN = JSON.parse(document.getElementById("enroll-token").textContent);
+  const btn = document.getElementById("register-btn");
+  const status = document.getElementById("status");
+
+  function show(text, kind) {
+    status.textContent = text;
+    status.className = kind || "";
+  }
+
+  function b64uToBytes(s) {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    const bin = atob(s);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  function bytesToB64u(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function getCookie(name) {
+    const match = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]+)"));
+    return match ? decodeURIComponent(match[2]) : null;
+  }
+
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken") || "",
+      },
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || "Unknown error");
+    }
+    return res.json();
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    show("Starting registration...");
+
+    try {
+      const options = await postJSON(`/webauthn/register/start/${TOKEN}/`, {});
+
+      options.challenge = b64uToBytes(options.challenge);
+      options.user.id = b64uToBytes(options.user.id);
+      if (options.excludeCredentials) {
+        options.excludeCredentials = options.excludeCredentials.map((c) => ({
+          ...c,
+          id: b64uToBytes(c.id),
+        }));
+      }
+
+      show("Confirm with your authenticator (Touch ID / YubiKey / device PIN)...");
+      const credential = await navigator.credentials.create({ publicKey: options });
+
+      const payload = {
+        id: credential.id,
+        rawId: bytesToB64u(credential.rawId),
+        type: credential.type,
+        response: {
+          clientDataJSON: bytesToB64u(credential.response.clientDataJSON),
+          attestationObject: bytesToB64u(credential.response.attestationObject),
+          transports: credential.response.getTransports ? credential.response.getTransports() : [],
+        },
+        clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+      };
+
+      await postJSON(`/webauthn/register/finish/${TOKEN}/`, payload);
+      show("Passkey registered. You can close this window.", "success");
+    } catch (err) {
+      show("Error: " + err.message, "error");
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

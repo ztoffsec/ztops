@@ -1,0 +1,40 @@
+# gitleaks config. Extends the default ruleset; do not disable rules without reason.
+# Run locally:   gitleaks detect --config .gitleaks.toml --redact
+# Pre-commit and CI both invoke gitleaks.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders only — never real secrets."
+paths = [
+    '''\.env\.example$''',
+    '''env\.production\.example$''',
+    '''\.gitleaks\.toml$''',
+    '''SECURITY\.md$''',
+    '''README\.md$''',
+    '''deploy/prod/MIGRATION\.md$''',
+]
+# Allow the documented zto_live_ token prefix used as an example of the
+# API-token shape. Never allow longer matches that look like real tokens.
+# Also allow the test-only / dev-only SECRET_KEY sentinels used in settings —
+# they exist to be visibly fake. Real secrets must never match these prefixes.
+# REPLACE_ME_* is the env-template placeholder convention; gitleaks's
+# generic-api-key entropy heuristic mis-fires on the all-caps + underscore
+# layout, so allowlist the prefix at the regex layer.
+regexes = [
+    '''zto_live_XXXX\.{3}''',
+    '''(test|dev)-only-secret-[a-z0-9-]+''',
+    '''REPLACE_ME[A-Z0-9_]*''',
+]
+
+[[rules]]
+id = "django-secret-key-literal"
+description = "Django SECRET_KEY assigned a hardcoded value in source"
+regex = '''SECRET_KEY\s*=\s*["'][^"']{20,}["']'''
+path = '''\.py$'''
+
+[[rules]]
+id = "ztops-api-token"
+description = "ZTOps API token in cleartext"
+regex = '''zto_live_[A-Za-z0-9_-]{24,}'''

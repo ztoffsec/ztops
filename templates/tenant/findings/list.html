@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Findings — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .scope-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 0 0 1rem; }
+  .scope-tabs a {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .scope-tabs a:hover { color: var(--text); text-decoration: none; }
+  .scope-tabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
+  .scope-tabs .count {
+    display: inline-block;
+    margin-left: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 0.0625rem 0.5rem;
+    border-radius: 999px;
+  }
+  .scope-tabs a.active .count { background: var(--border); color: var(--text); }
+
+  th a.sort-link {
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  th a.sort-link:hover { color: var(--text); text-decoration: none; }
+  th a.sort-link.active { color: var(--text); }
+  th a.sort-link .arrow { font-size: 0.625rem; opacity: 0.5; }
+  th a.sort-link.active .arrow { opacity: 1; }
+
+  .pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .pagination-bar .left, .pagination-bar .right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+  }
+  .per-page-picker { display: flex; gap: 0.25rem; }
+  .per-page-picker a {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .per-page-picker a:hover { color: var(--text); text-decoration: none; }
+  .per-page-picker a.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-card);
+  }
+  @media (max-width: 720px) {
+    .scope-tabs { overflow-x: auto; flex-wrap: nowrap; }
+    .scope-tabs a { white-space: nowrap; }
+    .pagination-bar .left,
+    .pagination-bar .right { width: 100%; justify-content: space-between; }
+    .pagination-bar .left { flex-wrap: wrap; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Findings</h1>
+  <p class="meta">
+    {{ total }} finding{{ total|pluralize }} tracked.
+    <a href="{% url 'findings:new' %}">New finding</a>
+  </p>
+
+  <div class="scope-tabs">
+    <a href="?scope=mine" class="{% if scope == 'mine' %}active{% endif %}">
+      My findings <span class="count">{{ counts.mine }}</span>
+    </a>
+    <a href="?scope=all" class="{% if scope == 'all' %}active{% endif %}">
+      All findings <span class="count">{{ counts.all }}</span>
+    </a>
+  </div>
+
+  <form method="get" class="filter-bar">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <input type="hidden" name="sort" value="{{ sort_param }}">
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+    <input type="text" name="q" value="{{ filter_q }}" placeholder="Search ID or title">
+
+    <select name="status">
+      <option value="">All statuses</option>
+      {% for value, label in statuses %}
+        <option value="{{ value }}" {% if value == filter_status %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="severity">
+      <option value="">All severities</option>
+      {% for value, label in severities %}
+        <option value="{{ value }}" {% if value == filter_severity %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="channel">
+      <option value="">All channels</option>
+      {% for value, label in channels %}
+        <option value="{{ value }}" {% if value == filter_channel %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <input type="text" name="vendor" value="{{ filter_vendor }}" placeholder="Vendor">
+
+    <select name="reporter">
+      <option value="">All reporters</option>
+      {% for r in reporter_options %}
+        <option value="{{ r.id }}" {% if filter_reporter == r.id|stringformat:"s" %}selected{% endif %}>{{ r.display_name|default:r.email }}</option>
+      {% endfor %}
+    </select>
+
+    <span class="spacer"></span>
+    <button type="submit">Apply</button>
+    <a href="?scope={{ scope }}" class="btn btn-secondary">Reset</a>
+  </form>
+</div>
+
+<div class="card">
+  {% if findings %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        {% for h in sort_headers %}
+        <th>
+          <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+          <a class="sort-link {% if h.is_active %}active{% endif %}" href="{{ h.url }}">
+            {{ h.label }}
+            <span class="arrow">{% if h.is_asc %}&uarr;{% elif h.is_desc %}&darr;{% else %}&#8597;{% endif %}</span>
+          </a>
+        </th>
+        {% endfor %}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}">{{ f.internal_id }}</a></td>
+        <td data-label="Title">
+          <a href="{% url 'findings:detail' f.id %}">{{ f.title }}</a>
+          <span class="pill review-{{ f.review_state }}">{{ f.get_review_state_display }}</span>
+        </td>
+        <td data-label="Vendor">{% if f.vendor %}<a href="{% url 'vendors:detail' f.vendor.slug %}">{{ f.vendor.name }}</a>{% else %}—{% endif %}</td>
+        <td class="subtle" data-label="Reporter">{{ f.reported_by.display_name|default:f.reported_by_email }}</td>
+        <td data-label="Channel">{{ f.get_channel_display }}{% if f.channel_program %} / {{ f.channel_program }}{% endif %}</td>
+        <td class="mono" data-label="CVE">{{ f.cve_id|default:"—" }}</td>
+        <td data-label="Severity"><span class="pill sev-{{ f.severity }}">{{ f.get_severity_display }}</span></td>
+        <td data-label="Status"><span class="pill status-{{ f.status }}">{{ f.get_status_display }}</span></td>
+        <td class="actions">
+          {% if f.id in editable_ids %}
+            <a href="{% url 'findings:edit' f.id %}">Edit</a>
+          {% else %}
+            <span class="subtle">View only</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pagination-bar">
+    <div class="left">
+      Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total }}
+      <span class="divider"></span>
+      <span>Per page</span>
+      <span class="per-page-picker">
+        {% for opt in per_page_options %}
+        <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+        <a href="{{ opt.url }}" class="{% if opt.is_active %}active{% endif %}">{{ opt.n }}</a>
+        {% endfor %}
+      </span>
+    </div>
+    <div class="right">
+      <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+      {% if page_prev_url %}<a href="{{ page_prev_url }}" class="btn btn-secondary">&larr; Prev</a>{% endif %}
+      <span>Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+      <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+      {% if page_next_url %}<a href="{{ page_next_url }}" class="btn btn-secondary">Next &rarr;</a>{% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="subtle">
+    {% if scope == 'mine' %}
+      You have no findings assigned to you. Switch to <a href="?scope=all">All findings</a> to browse the team's work.
+    {% else %}
+      No findings match the current filters.
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor.name }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'vendors:list' %}">&larr; Vendors</a></p>
+  <h1>{{ vendor.name }}</h1>
+  <p class="meta">
+    <span class="mono">{{ vendor.slug }}</span>
+    {% if vendor.website %}
+      <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+      &middot; <a href="{{ vendor.website }}" rel="noopener nofollow noreferrer" target="_blank">{{ vendor.website }}</a>
+    {% endif %}
+    {% if can_edit %}
+      &middot; <a href="{% url 'vendors:edit' vendor.slug %}">Edit</a>
+    {% endif %}
+  </p>
+  {% if vendor.description %}
+  <p>{{ vendor.description|linebreaksbr }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Findings ({{ findings|length }})</h2>
+  {% if findings %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Reporter</th>
+        <th>Severity</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}">{{ f.internal_id }}</a></td>
+        <td data-label="Title"><a href="{% url 'findings:detail' f.id %}">{{ f.title }}</a></td>
+        <td class="subtle" data-label="Reporter">{{ f.reported_by.display_name|default:f.reported_by_email }}</td>
+        <td data-label="Severity"><span class="pill sev-{{ f.severity }}">{{ f.get_severity_display }}</span></td>
+        <td data-label="Status"><span class="pill status-{{ f.status }}">{{ f.get_status_display }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No findings reported against this vendor yet.</p>
+  {% endif %}
+</div>
+
+{% if can_edit %}
+<div class="card">
+  <h2>Danger zone</h2>
+  <p class="meta">Deletion is blocked if any findings reference this vendor.</p>
+  <form method="post" action="{% url 'vendors:delete' vendor.slug %}" class="inline-form">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary">Delete vendor</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

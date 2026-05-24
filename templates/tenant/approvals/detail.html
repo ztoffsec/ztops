@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Approval {{ approval.id }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Approval</h1>
+  <p class="meta mono">{{ approval.id }}</p>
+</div>
+
+{% if error %}
+<div class="card">
+  <p class="status error">{{ error }}</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Request</h2>
+  <table>
+    <tbody>
+      <tr><th>Action</th><td class="mono">{{ approval.action }}</td></tr>
+      <tr><th>State</th><td><span class="pill">{{ approval.state }}</span></td></tr>
+      <tr><th>Requested by</th><td>{{ approval.requested_by.email }}</td></tr>
+      <tr><th>Created</th><td>{{ approval.created_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      <tr><th>Expires</th><td>{{ approval.expires_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      <tr><th>Payload hash</th><td class="mono">{{ approval.payload_hash }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Payload</h2>
+  <pre class="mono payload">{{ payload_json }}</pre>
+</div>
+
+{% if approval.approved_by or approval.denied_by or approval.executed_at %}
+<div class="card">
+  <h2>Decision</h2>
+  <table>
+    <tbody>
+      {% if approval.approved_by %}
+      <tr><th>Approved by</th><td>{{ approval.approved_by.email }}</td></tr>
+      <tr><th>Approved at</th><td>{{ approval.approved_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      {% endif %}
+      {% if approval.denied_by %}
+      <tr><th>Denied by</th><td>{{ approval.denied_by.email }}</td></tr>
+      <tr><th>Denied at</th><td>{{ approval.denied_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      <tr><th>Reason</th><td>{{ approval.denied_reason }}</td></tr>
+      {% endif %}
+      {% if approval.executed_at %}
+      <tr><th>Executed at</th><td>{{ approval.executed_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      {% endif %}
+      {% if approval.execution_error %}
+      <tr><th>Execution error</th><td class="mono">{{ approval.execution_error }}</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if approval.is_pending and not is_own %}
+<div class="card">
+  <h2>Act</h2>
+  <p class="meta">
+    You are <strong>not</strong> the requester. You may approve or deny this request.
+  </p>
+
+  <form method="post" action="{% url 'approvals:approve' approval.id %}" class="inline-form">
+    {% csrf_token %}
+    <button type="submit">Approve and execute</button>
+  </form>
+
+  <form method="post" action="{% url 'approvals:deny' approval.id %}" class="deny-form">
+    {% csrf_token %}
+    <div class="field">
+      <label for="reason">Reason (required for denial)</label>
+      <input type="text" id="reason" name="reason" maxlength="500" required>
+    </div>
+    <button type="submit" class="btn-secondary">Deny</button>
+  </form>
+</div>
+{% elif is_own and approval.is_pending %}
+<div class="card">
+  <p class="status warning">
+    This is your own request. Another superadmin must act on it.
+  </p>
+</div>
+{% endif %}
+
+<p><a href="{% url 'approvals:list' %}">Back to approvals</a></p>
+{% endblock %}

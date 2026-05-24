@@ -1,0 +1,136 @@
+name: ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      # mypy is scoped to core/security/ per project hardening spec. No-op if dir missing.
+      - run: |
+          if [ -d core/security ]; then
+            uv run mypy
+          else
+            echo "core/security/ not present yet — skipping mypy"
+          fi
+
+  security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      - name: bandit
+        # Skip cleanly until apps/ and core/ exist (Phase 1+). Once code lands, this blocks on findings.
+        run: |
+          targets=""
+          [ -d apps ] && targets="$targets apps"
+          [ -d core ] && targets="$targets core"
+          if [ -n "$targets" ]; then
+            uv run bandit -r $targets -c pyproject.toml
+          else
+            echo "apps/ and core/ not present yet — skipping bandit"
+          fi
+      - name: pip-audit
+        # pip-audit's --disable-pip requires -r REQUIREMENTS, so export from uv.lock first.
+        # --no-emit-project drops the ztops==0.0.0 self-reference.
+        # --no-deps tells pip-audit "the lockfile already pinned every transitive, don't try to resolve".
+        # Without --no-deps, --disable-pip demands hashed requirements; --no-hashes makes that infeasible.
+        run: |
+          uv export --format requirements-txt --no-hashes --no-emit-project > /tmp/requirements.txt
+          uv run pip-audit -r /tmp/requirements.txt --strict --disable-pip --no-deps
+      - name: gitleaks
+        # The gitleaks-action requires a paid license for org repos; the CLI does not.
+        # Pin the version to match .pre-commit-config.yaml so dev and CI behave identically.
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --verbose --exit-code 1
+      - name: semgrep
+        # Two Django rules generate consistent false positives against
+        # our templates and don't respect inline `<!-- nosemgrep -->`
+        # (they match multi-line blocks). Excluded explicitly:
+        # - django-no-csrf-token: the rule expects {% csrf_token %} as
+        #   the immediate first child of <form>; ours sit on the next
+        #   line. Every form does include csrf_token — semgrep just
+        #   can't see it through Django's templating syntax.
+        # - template-unescaped-with-safe: fires on `{{ X|safe }}`. The
+        #   only `|safe` usages render description_html / note body_html
+        #   already bleached server-side by render_markdown with an
+        #   explicit tag/attr allowlist.
+        run: |
+          uv run --with semgrep semgrep ci \
+            --config p/django \
+            --config p/python \
+            --config p/security-audit \
+            --config p/secrets \
+            --exclude-rule python.django.security.django-no-csrf-token.django-no-csrf-token \
+            --exclude-rule python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe
+
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ztops
+          POSTGRES_PASSWORD: ztops
+          POSTGRES_DB: ztops_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ztops"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://ztops:ztops@localhost:5432/ztops_test
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      # pytest-django imports DJANGO_SETTINGS_MODULE at startup. Guard until config/ lands.
+      - name: pytest
+        run: |
+          if [ -d config ]; then
+            uv run pytest
+          else
+            echo "config/ not present yet — skipping pytest"
+          fi

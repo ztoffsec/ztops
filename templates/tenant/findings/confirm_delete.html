@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ finding.internal_id }}? — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .danger-card {
+    border: 1px solid var(--error);
+  }
+  .danger-card h1 { color: var(--error); }
+  .btn-danger {
+    background: var(--error);
+    border-color: var(--error);
+    color: #fff;
+  }
+  .btn-danger:hover { background: #991b1b; border-color: #991b1b; }
+  @media (prefers-color-scheme: dark) {
+    .btn-danger { color: #fff; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'findings:detail' finding.id %}">&larr; {{ finding.internal_id }}</a></p>
+</div>
+
+<div class="card danger-card">
+  <h1>Delete this finding?</h1>
+  <p class="meta">
+    This action is permanent. The Finding row + all its notes and
+    attachments will be removed. The audit log will record the deletion
+    with a snapshot of the row's identity (internal_id, title, vendor,
+    severity, status, reporter).
+  </p>
+
+  <table>
+    <tbody>
+      <tr><th>ID</th><td class="mono">{{ finding.internal_id }}</td></tr>
+      <tr><th>Title</th><td>{{ finding.title }}</td></tr>
+      <tr><th>Vendor</th><td>{{ finding.vendor.name|default:"—" }}</td></tr>
+      <tr><th>Severity</th><td><span class="pill sev-{{ finding.severity }}">{{ finding.get_severity_display }}</span></td></tr>
+      <tr><th>Status</th><td><span class="pill status-{{ finding.status }}">{{ finding.get_status_display }}</span></td></tr>
+      <tr><th>Reported by</th><td>{{ finding.reported_by.display_name|default:finding.reported_by_email }}</td></tr>
+      <tr><th>Notes</th><td>{{ finding.notes.count }}</td></tr>
+      <tr><th>Attachments</th><td>{{ finding.attachments.count }}</td></tr>
+    </tbody>
+  </table>
+
+  <form method="post" action="{% url 'findings:delete' finding.id %}" style="margin-top: 1rem">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">Yes, delete permanently</button>
+    <a href="{% url 'findings:detail' finding.id %}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Profile — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Profile</h1>
+  <p class="meta">
+    Signed in as <strong>{{ request.user.display_name }}</strong>
+    <span class="pill role-{{ request.user.role }}">{{ request.user.role }}</span>
+  </p>
+</div>
+
+<div class="card">
+  <h2>Account</h2>
+  <table>
+    <tbody>
+      <tr><th>Email</th><td class="mono">{{ request.user.email }}</td></tr>
+      <tr><th>Display name</th><td>{{ request.user.display_name }}</td></tr>
+      <tr><th>Role</th><td>{{ request.user.role }}</td></tr>
+      <tr><th>Account created</th><td>{{ request.user.created_at|date:"Y-m-d H:i" }} UTC</td></tr>
+      <tr><th>Last sign-in</th><td>{{ request.user.last_login|date:"Y-m-d H:i"|default:"—" }} {% if request.user.last_login %}UTC{% endif %}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Passkeys</h2>
+  <p class="meta">
+    {{ credentials|length }} authenticator{{ credentials|length|pluralize }} registered.
+    Register additional devices to avoid lockout — recovery requires a second superadmin.
+  </p>
+
+  {% if credentials %}
+  <table class="table-cards">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Transports</th>
+        <th>Registered</th>
+        <th>Last used</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in credentials %}
+      <tr>
+        <td class="mono" data-label="ID">{{ c.id|stringformat:"s"|slice:":13" }}…</td>
+        <td data-label="Transports">{{ c.transports|join:", "|default:"—" }}</td>
+        <td data-label="Registered">{{ c.created_at|date:"Y-m-d H:i" }} UTC</td>
+        <td data-label="Last used">{{ c.last_used_at|date:"Y-m-d H:i"|default:"—" }}{% if c.last_used_at %} UTC{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No passkeys registered. Sign-in is impossible until at least one is bound.</p>
+  {% endif %}
+</div>
+{% endblock %}

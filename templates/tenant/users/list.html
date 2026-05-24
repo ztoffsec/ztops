@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Users — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Users</h1>
+  <p class="meta">
+    {{ users|length }} user{{ users|length|pluralize }}.
+    <a href="{% url 'accounts:user_new' %}">New user</a>
+  </p>
+</div>
+
+<div class="card">
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Display name</th>
+        <th>Role</th>
+        <th>Active</th>
+        <th>Passkeys</th>
+        <th>Last sign-in</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td class="mono" data-label="Email">{{ u.email }}</td>
+        <td data-label="Display name">{{ u.display_name }}</td>
+        <td data-label="Role"><span class="pill role-{{ u.role }}">{{ u.role }}</span></td>
+        <td data-label="Active">{% if u.is_active %}<span class="subtle">yes</span>{% else %}<span class="subtle">no</span>{% endif %}</td>
+        <td class="mono" data-label="Passkeys">{{ u.passkey_count }}</td>
+        <td class="subtle" data-label="Last sign-in">{{ u.last_login|date:"Y-m-d H:i"|default:"—" }}</td>
+        <td class="actions"><a href="{% url 'accounts:user_detail' u.id %}">Manage</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

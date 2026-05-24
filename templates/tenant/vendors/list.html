@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Vendors — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .vendor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .vendor-tile {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    background: var(--bg-card);
+  }
+  .vendor-tile h3 { margin: 0 0 0.25rem; }
+  .vendor-tile h3 a { color: var(--text); }
+  .vendor-tile .meta { color: var(--text-muted); font-size: 0.8125rem; margin-bottom: 0.5rem; }
+  .vendor-tile .findings-count {
+    display: inline-block;
+    background: var(--bg);
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Vendors</h1>
+  <p class="meta">
+    {{ vendors|length }} vendor{{ vendors|length|pluralize }} registered.
+    Any researcher can register a vendor before filing a finding.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Register a vendor</h2>
+  <form method="post" action="{% url 'vendors:new' %}">
+    {% csrf_token %}
+    <div class="field-grid">
+      <div class="field">
+        <label for="id_slug">Slug</label>
+        {{ form.slug }}
+        {% if form.slug.errors %}<p class="status error">{{ form.slug.errors|join:" " }}</p>{% endif %}
+      </div>
+      <div class="field">
+        <label for="id_name">Name</label>
+        {{ form.name }}
+        {% if form.name.errors %}<p class="status error">{{ form.name.errors|join:" " }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="field">
+      <label for="id_website">Website (optional)</label>
+      {{ form.website }}
+      {% if form.website.errors %}<p class="status error">{{ form.website.errors|join:" " }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="id_description">Description (optional)</label>
+      {{ form.description }}
+    </div>
+    <button type="submit">Register vendor</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Registered vendors</h2>
+  {% if vendors %}
+  <div class="vendor-grid">
+    {% for v in vendors %}
+    <div class="vendor-tile">
+      <h3><a href="{% url 'vendors:detail' v.slug %}">{{ v.name }}</a></h3>
+      <p class="meta mono">{{ v.slug }}</p>
+      <span class="findings-count">{{ v.findings.count }} finding{{ v.findings.count|pluralize }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="subtle">No vendors yet. Use the form above to register the first one.</p>
+  {% endif %}
+</div>
+{% endblock %}

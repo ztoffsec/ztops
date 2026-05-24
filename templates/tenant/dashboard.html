@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+  }
+  .stat .label {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .stat .value {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-top: 0.25rem;
+  }
+  .stat .sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.125rem; }
+
+  .twocol {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 1rem;
+  }
+
+  .radar-wrap {
+    display: flex;
+    gap: 1.25rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .radar-svg {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    flex: 1 1 280px;
+    display: block;
+    overflow: visible;
+  }
+  .radar-label {
+    font-size: 8px;
+  }
+  .radar-grid {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 0.6;
+    opacity: 0.55;
+  }
+  .radar-axis {
+    stroke: var(--border);
+    stroke-width: 0.6;
+    opacity: 0.55;
+  }
+  .radar-data {
+    fill: var(--accent);
+    fill-opacity: 0.16;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    transform-origin: 100px 100px;
+    animation: radar-grow 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    filter: drop-shadow(0 1px 6px rgba(124, 58, 237, 0.25));
+  }
+  .radar-dot {
+    transition: transform 140ms ease-out;
+    transform-origin: center;
+    transform-box: fill-box;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+    cursor: default;
+  }
+  .radar-dot:hover { transform: scale(1.6); }
+  .radar-label {
+    font-size: 9px;
+    font-weight: 600;
+    fill: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+  }
+  @keyframes radar-grow {
+    from { transform: scale(0.15); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+  }
+
+  .radar-legend { flex: 1; min-width: 180px; }
+  .radar-legend ul { list-style: none; padding: 0; margin: 0; }
+  .radar-legend li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .radar-legend li:last-child { border-bottom: 0; }
+  .radar-legend .swatch {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .radar-legend .label { flex: 1; }
+  .radar-legend .count { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stat-grid">
+  <div class="stat">
+    <div class="label">Total findings</div>
+    <div class="value">{{ stats.total_findings }}</div>
+    <div class="sub">tracked across the team</div>
+  </div>
+  <div class="stat">
+    <div class="label">Critical + High</div>
+    <div class="value">{{ stats.critical_high }}</div>
+    <div class="sub">highest-severity bands</div>
+  </div>
+  <div class="stat">
+    <div class="label">My open</div>
+    <div class="value">{{ stats.my_open }}</div>
+    <div class="sub">of {{ stats.my_total }} assigned to me</div>
+  </div>
+  <div class="stat">
+    <div class="label">Vendors</div>
+    <div class="value">{{ stats.total_vendors }}</div>
+    <div class="sub">registered targets</div>
+  </div>
+  {% if request.user.is_review_authority %}
+  <div class="stat">
+    <div class="label">Pending review</div>
+    <div class="value">{{ stats.pending_reviews }}</div>
+    <div class="sub"><a href="{% url 'reviews:queue' %}">Review queue</a></div>
+  </div>
+  {% endif %}
+  {% if request.user.is_superadmin %}
+  <div class="stat">
+    <div class="label">Open approvals</div>
+    <div class="value">{{ stats.actionable_approvals }}</div>
+    <div class="sub"><a href="{% url 'approvals:list' %}">Two-person rule</a></div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="twocol">
+  <div class="card">
+    <h2>Severity</h2>
+    {% if severity_radar %}
+    <div class="radar-wrap">
+      <svg class="radar-svg" viewBox="0 0 200 200" role="img" aria-label="Severity radar">
+        {% for pts in severity_radar.grid_polygons %}
+        <polygon points="{{ pts }}" class="radar-grid"/>
+        {% endfor %}
+        {% for ax in severity_radar.axes %}
+        <line x1="{{ severity_radar.cx }}" y1="{{ severity_radar.cy }}" x2="{{ ax.ax_x }}" y2="{{ ax.ax_y }}" class="radar-axis"/>
+        {% endfor %}
+        <polygon points="{{ severity_radar.polygon_points }}" class="radar-data"/>
+        {% for ax in severity_radar.axes %}
+        <circle cx="{{ ax.vx }}" cy="{{ ax.vy }}" r="3" fill="{{ ax.color }}" class="radar-dot">
+          <title>{{ ax.label }}: {{ ax.count }}</title>
+        </circle>
+        {% endfor %}
+        {% for ax in severity_radar.axes %}
+        <text x="{{ ax.lx }}" y="{{ ax.ly }}" class="radar-label" text-anchor="middle" dominant-baseline="middle">{{ ax.label }}</text>
+        {% endfor %}
+      </svg>
+      <div class="radar-legend">
+        <ul>
+          {% for ax in severity_radar.axes %}
+          <li>
+            <svg class="swatch" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10" fill="{{ ax.color }}" rx="2"/></svg>
+            <span class="label">{{ ax.label }}</span>
+            <span class="count">{{ ax.count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}
+      <p class="subtle">No findings yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Status</h2>
+    {% if status_breakdown %}
+    <table>
+      <tbody>
+        {% for row in status_breakdown %}
+        <tr>
+          <td><span class="pill status-{{ row.value }}">{{ row.label }}</span></td>
+          <td style="text-align: right" class="mono">{{ row.count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="subtle">No findings yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="twocol">
+  <div class="card">
+    <h2>Top vendors</h2>
+    {% if top_vendors %}
+    <table>
+      <thead><tr><th>Vendor</th><th style="text-align: right">Findings</th></tr></thead>
+      <tbody>
+        {% for v in top_vendors %}
+        <tr>
+          <td><a href="{% url 'vendors:detail' v.slug %}">{{ v.name }}</a></td>
+          <td style="text-align: right" class="mono">{{ v.n }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="subtle">No vendors with findings yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Researchers</h2>
+    {% if per_researcher %}
+    <table class="table-cards">
+      <thead>
+        <tr>
+          <th>Researcher</th>
+          <th style="text-align: right">Total</th>
+          <th style="text-align: right">Open</th>
+          <th style="text-align: right">Crit</th>
+          <th style="text-align: right">High</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in per_researcher %}
+        <tr>
+          <td data-label="Researcher">{{ r.display_name|default:r.email }}</td>
+          <td style="text-align: right" class="mono" data-label="Total">{{ r.reported_total }}</td>
+          <td style="text-align: right" class="mono" data-label="Open">{{ r.reported_open }}</td>
+          <td style="text-align: right" class="mono" data-label="Critical">{{ r.reported_critical }}</td>
+          <td style="text-align: right" class="mono" data-label="High">{{ r.reported_high }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="subtle">No researchers yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent activity</h2>
+  {% if recent_findings %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Vendor</th>
+        <th>Reporter</th>
+        <th>Severity</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in recent_findings %}
+      <tr>
+        <td class="subtle" data-label="When">{{ f.created_at|date:"Y-m-d H:i" }}</td>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}">{{ f.internal_id }}</a></td>
+        <td data-label="Title"><a href="{% url 'findings:detail' f.id %}">{{ f.title }}</a></td>
+        <td data-label="Vendor">{% if f.vendor %}<a href="{% url 'vendors:detail' f.vendor.slug %}">{{ f.vendor.name }}</a>{% else %}—{% endif %}</td>
+        <td class="subtle" data-label="Reporter">{{ f.reported_by.display_name|default:f.reported_by_email }}</td>
+        <td data-label="Severity"><span class="pill sev-{{ f.severity }}">{{ f.get_severity_display }}</span></td>
+        <td data-label="Status"><span class="pill status-{{ f.status }}">{{ f.get_status_display }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="subtle">No findings yet. <a href="{% url 'findings:new' %}">Create the first one</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

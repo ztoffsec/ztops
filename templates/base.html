@@ -1,0 +1,790 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="icon" type="image/png" href="{% static 'img/zerotrust-icon.png' %}">
+<link rel="stylesheet" href="{% static 'css/pygments.css' %}">
+<title>{% block title %}ZTOps{% endblock %}</title>
+<style nonce="{{ request.csp_nonce }}">
+  :root {
+    color-scheme: light dark;
+    --bg: #fafafa;
+    --bg-card: #ffffff;
+    --border: #e5e5e5;
+    --text: #0a0a0a;
+    --text-muted: #525252;
+    --accent: #111;
+    --accent-hover: #000;
+    --error: #b91c1c;
+    --success: #047857;
+    --warning: #b45309;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 14px;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  h1, h2, h3, h4 {
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    /* Long finding titles / IDs wrap instead of overflowing the card. */
+    overflow-wrap: break-word;
+    word-break: break-word;
+    min-width: 0;
+  }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.125rem; }
+  h3 { font-size: 1rem; }
+  p { margin: 0; min-width: 0; overflow-wrap: break-word; }
+
+  /* layout */
+  .topbar {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .topbar .brand { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  .topbar .brand img { height: 28px; width: auto; display: block; }
+  .topbar .brand .logo-dark-mode { display: none; }
+  @media (prefers-color-scheme: dark) {
+    .topbar .brand .logo-light-mode { display: none; }
+    .topbar .brand .logo-dark-mode { display: block; }
+  }
+  .topbar .nav {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+  .topbar .nav a {
+    color: var(--text-muted);
+    padding: 0.25rem 0;
+    border-bottom: 2px solid transparent;
+  }
+  .topbar .nav a:hover { color: var(--text); text-decoration: none; }
+  .topbar .nav a.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .topbar .nav .divider {
+    width: 1px;
+    height: 1rem;
+    background: var(--border);
+  }
+  /* Mobile hamburger — hidden on desktop, shown below 768px. */
+  .topbar .hamburger {
+    display: none;
+    padding: 0.375rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .topbar .hamburger:hover { background: var(--bg); }
+  .topbar .hamburger svg { display: block; }
+  .drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 80;
+  }
+  body.drawer-open .drawer-overlay { display: block; }
+  body.drawer-open { overflow: hidden; }
+  main { max-width: min(95vw, 1500px); margin: 2rem auto; padding: 0 1.5rem; }
+  main.narrow { max-width: 720px; }
+
+  /* ---------- Responsive: mobile (<768px) ---------- */
+  @media (max-width: 767px) {
+    h1 { font-size: 1.375rem; }
+    h2 { font-size: 1.0625rem; }
+    main { margin: 1rem auto; padding: 0 0.75rem; max-width: 100%; }
+    .card { padding: 1rem; border-radius: 6px; margin-bottom: 0.75rem; }
+
+    .topbar { padding: 0.625rem 0.875rem; }
+    .topbar .hamburger { display: inline-flex; align-items: center; }
+    /* The primary nav becomes a left-side drawer; the profile nav stays
+       inline (compact) on the right. */
+    .topbar .nav.primary {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: min(78vw, 280px);
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 4rem 1rem 1.5rem;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.25rem;
+      z-index: 90;
+      transform: translateX(-100%);
+      transition: transform 220ms ease-out;
+      overflow-y: auto;
+    }
+    body.drawer-open .topbar .nav.primary { transform: translateX(0); }
+    .topbar .nav.primary a {
+      padding: 0.625rem 0.5rem;
+      border-bottom: none;
+      border-radius: 4px;
+      font-size: 0.9375rem;
+    }
+    .topbar .nav.primary a:hover,
+    .topbar .nav.primary a.active {
+      background: var(--bg);
+      color: var(--text);
+      border-bottom: none;
+    }
+    .topbar .nav.primary .divider {
+      width: 100%;
+      height: 1px;
+      margin: 0.25rem 0;
+    }
+    /* Right-side nav: keep profile + sign-out inline, smaller. */
+    .topbar .nav.profile { gap: 0.5rem; font-size: 0.75rem; }
+    .topbar .nav.profile a { padding: 0; border-bottom: none; }
+    .topbar .nav.profile button { padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+
+    /* Long unbroken strings — CVSS vectors, payload hashes, emails,
+       reference URLs — wrap instead of pushing past the card margin.
+       Covers every key-value table, list, and inline mono run app-wide. */
+    th, td, li, dd, dt, .mono, .markdown-body { overflow-wrap: anywhere; word-break: break-word; }
+    .references a, li.mono a { overflow-wrap: anywhere; word-break: break-all; }
+  }
+
+  /* cards */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .card > h1, .card > h2 { margin: 0 0 0.25rem; }
+  .card > .meta { color: var(--text-muted); margin-bottom: 1rem; font-size: 0.8125rem; }
+  .card > .meta:last-child { margin-bottom: 0; }
+
+  /* forms */
+  .field { margin-bottom: 1rem; }
+  label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.375rem; }
+  input[type="email"], input[type="text"], input[type="number"], input[type="date"],
+  input[type="url"], input[type="password"], select, textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background: var(--bg-card);
+    color: var(--text);
+    line-height: 1.4;
+  }
+  /* Native select: kill the OS chrome and draw our own caret. */
+  select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' fill='none' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    background-size: 12px 12px;
+    padding-right: 2rem;
+    cursor: pointer;
+  }
+  select::-ms-expand { display: none; }
+  textarea { resize: vertical; min-height: 4rem; font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-color: transparent;
+  }
+  input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 0.6; }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .field-grid .field { margin-bottom: 0; }
+  @media (max-width: 720px) {
+    .field-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Chip-style tag input + autocomplete popup. The CWE picker and the
+     URL-references picker both use this. */
+  .tag-input {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.375rem;
+    background: var(--bg-card);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: center;
+    min-height: 2.5rem;
+  }
+  .tag-input:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-color: transparent;
+  }
+  .tag-input [data-tag-input-chips] { display: contents; }
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .tag-chip-x {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .tag-chip-x:hover { color: var(--error); }
+  .tag-input [data-tag-input-entry] {
+    flex: 1;
+    min-width: 180px;
+    width: auto;
+    border: 0;
+    padding: 0.25rem 0.375rem;
+    background: transparent;
+    font-size: 0.875rem;
+    outline: none;
+  }
+  .tag-input [data-tag-input-entry].dup {
+    animation: tag-dup 350ms ease;
+  }
+  @keyframes tag-dup {
+    0% { background: rgba(185, 28, 28, 0.12); }
+    100% { background: transparent; }
+  }
+
+  /* Custom autocomplete popup. JS sets `.open` to show. */
+  .tag-input-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    margin: 0;
+    padding: 0.25rem;
+    list-style: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    max-height: 320px;
+    overflow-y: auto;
+    display: none;
+  }
+  .tag-input-suggestions.open { display: block; }
+  .tag-input-suggestion {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    padding: 0.4375rem 0.625rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+  }
+  .tag-input-suggestion.active { background: var(--bg); }
+  .tag-input-suggestion-id {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 5.5rem;
+  }
+  .tag-input-suggestion-name {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tag-input-suggestion.active .tag-input-suggestion-id { color: var(--text); }
+
+  /* filter pills */
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.75rem 0 0.5rem;
+  }
+  .filter-bar input, .filter-bar select {
+    width: auto;
+    min-width: 8rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+  }
+  .filter-bar .spacer { flex: 1; }
+  @media (max-width: 720px) {
+    .filter-bar { gap: 0.375rem; }
+    .filter-bar input,
+    .filter-bar select { width: 100%; min-width: 0; }
+    .filter-bar .spacer { display: none; }
+    .filter-bar button,
+    .filter-bar .btn { width: 100%; }
+  }
+
+  /* severity pills (filled) */
+  .pill.sev-critical { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+  .pill.sev-high     { color: #fff; background: #c2410c; border-color: #c2410c; }
+  .pill.sev-medium   { color: #fff; background: #b45309; border-color: #b45309; }
+  .pill.sev-low      { color: #fff; background: #15803d; border-color: #15803d; }
+  .pill.sev-none     { color: var(--text-muted); }
+
+  /* review state pills */
+  .pill.review-approved      { color: #047857; border-color: #a7f3d0; background: #d1fae5; }
+  .pill.review-pending       { color: #b45309; border-color: #fde68a; background: #fef3c7; }
+  .pill.review-under_review  { color: #1d4ed8; border-color: #bfdbfe; background: #dbeafe; }
+  .pill.review-rejected      { color: #be123c; border-color: #fecdd3; background: #ffe4e6; }
+  @media (prefers-color-scheme: dark) {
+    .pill.review-approved      { color: #a7f3d0; background: #022c22; border-color: #064e3b; }
+    .pill.review-pending       { color: #fde68a; background: #422006; border-color: #78350f; }
+    .pill.review-under_review  { color: #bfdbfe; background: #172554; border-color: #1e3a8a; }
+    .pill.review-rejected      { color: #fecdd3; background: #4c0519; border-color: #881337; }
+  }
+
+  /* status pills (subtle tint, one color per state) */
+  .pill.status-drafted      { color: #475569; border-color: #cbd5e1; background: #f1f5f9; }
+  .pill.status-in_triage    { color: #b45309; border-color: #fde68a; background: #fef3c7; }
+  .pill.status-vendor_ack   { color: #1d4ed8; border-color: #bfdbfe; background: #dbeafe; }
+  .pill.status-patched      { color: #047857; border-color: #a7f3d0; background: #d1fae5; }
+  .pill.status-awaiting_cve { color: #6d28d9; border-color: #ddd6fe; background: #ede9fe; }
+  .pill.status-duplicate    { color: #0e7490; border-color: #a5f3fc; background: #cffafe; }
+  .pill.status-rejected     { color: #be123c; border-color: #fecdd3; background: #ffe4e6; }
+  .pill.status-wontfix      { color: #57534e; border-color: #d6d3d1; background: #e7e5e4; }
+  .pill.status-wad          { color: #c2410c; border-color: #fed7aa; background: #ffedd5; }
+  @media (prefers-color-scheme: dark) {
+    .pill.status-drafted      { color: #cbd5e1; background: #0f172a; border-color: #1e293b; }
+    .pill.status-in_triage    { color: #fde68a; background: #422006; border-color: #78350f; }
+    .pill.status-vendor_ack   { color: #bfdbfe; background: #172554; border-color: #1e3a8a; }
+    .pill.status-patched      { color: #a7f3d0; background: #022c22; border-color: #064e3b; }
+    .pill.status-awaiting_cve { color: #ddd6fe; background: #2e1065; border-color: #4c1d95; }
+    .pill.status-duplicate    { color: #a5f3fc; background: #083344; border-color: #155e75; }
+    .pill.status-rejected     { color: #fecdd3; background: #4c0519; border-color: #881337; }
+    .pill.status-wontfix      { color: #d6d3d1; background: #1c1917; border-color: #44403c; }
+    .pill.status-wad          { color: #fed7aa; background: #431407; border-color: #7c2d12; }
+  }
+
+  /* messages */
+  .flash-stack { margin-bottom: 1rem; }
+  .flash {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+  }
+  .flash.success { border-color: var(--success); color: var(--success); }
+  .flash.error   { border-color: var(--error);   color: var(--error); }
+  .flash.warning { border-color: var(--warning); color: var(--warning); }
+
+  /* buttons */
+  button, .btn {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1.25;
+  }
+  button:hover, .btn:hover { background: var(--accent-hover); }
+  button:disabled, .btn:disabled { background: #a3a3a3; border-color: #a3a3a3; cursor: not-allowed; }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--bg); }
+  .btn-danger-text {
+    background: transparent;
+    color: var(--error);
+    border-color: var(--border);
+  }
+  .btn-danger-text:hover {
+    background: var(--bg);
+    border-color: var(--error);
+    color: var(--error);
+  }
+  /* Remove-style action: clearly destructive at rest, fills red on hover. */
+  .btn-remove {
+    background: #ffffff;
+    color: var(--error);
+    border: 1px solid var(--error);
+  }
+  .btn-remove:hover,
+  .btn-remove:focus-visible {
+    background: var(--error);
+    color: #ffffff;
+    border-color: var(--error);
+  }
+  /* Approve-style action: white at rest, fills green on hover. */
+  .btn-approve {
+    background: #ffffff;
+    color: var(--success);
+    border: 1px solid var(--success);
+  }
+  .btn-approve:hover,
+  .btn-approve:focus-visible {
+    background: var(--success);
+    color: #ffffff;
+    border-color: var(--success);
+  }
+  .inline-form { display: inline; }
+
+  /* status / output */
+  .status { display: block; margin-top: 1rem; font-size: 0.8125rem; min-height: 1.25rem; }
+  .status.error { color: var(--error); }
+  .status.success { color: var(--success); }
+  .status.warning { color: var(--warning); }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th, td { text-align: left; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  th {
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+  }
+  table.rows tbody tr { transition: background 60ms ease; }
+  table.rows tbody tr:hover { background: var(--bg); }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions a { color: var(--text-muted); font-size: 0.8125rem; }
+  td.actions a:hover { color: var(--text); }
+
+  /* Card-mode for big listings on small screens — opt-in via .table-cards.
+     Each <td> needs a data-label attribute so the column name renders
+     above its value. Headers are hidden, every row becomes a stacked
+     mini-card. */
+  @media (max-width: 720px) {
+    table.table-cards thead { display: none; }
+    table.table-cards,
+    table.table-cards tbody,
+    table.table-cards tr,
+    table.table-cards td {
+      display: block;
+      width: auto;
+    }
+    table.table-cards tr {
+      margin-bottom: 0.625rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-card);
+    }
+    table.table-cards tr:last-child { margin-bottom: 0; }
+    table.table-cards td {
+      padding: 0.3125rem 0;
+      border-bottom: none;
+    }
+    table.table-cards td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 0.125rem;
+    }
+    table.table-cards td.no-label::before { content: none; display: none; }
+    table.table-cards td.actions {
+      text-align: left;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+      margin-top: 0.25rem;
+    }
+    /* Tables that didn't get card-mode opt-in still get a horizontal
+       scroll fallback so they don't blow out the viewport. */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  }
+
+  /* utility */
+  .subtle { color: var(--text-muted); }
+  .mono { font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.8125rem; }
+  .pill {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .pill.role-superadmin { color: var(--accent); border-color: var(--accent); }
+  .center { text-align: center; }
+
+  /* Approvals detail: keep deny form spaced from the approve button. */
+  .deny-form { margin-top: 1rem; }
+  pre.payload {
+    background: var(--bg);
+    padding: 0.75rem;
+    border-radius: 4px;
+    max-width: 100%;
+    /* Wrap long JSON / description lines instead of overflowing the card. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Markdown rendering — used by the description preview + finding detail
+     + finding-note bodies. */
+  .markdown-body {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    /* Never let rendered markdown push past its container — long URLs,
+       tokens, and unbroken strings wrap instead of widening the page. */
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .markdown-body > *:first-child { margin-top: 0; }
+  .markdown-body > *:last-child { margin-bottom: 0; }
+  .markdown-body p { margin: 0 0 0.75rem; }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3,
+  .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+    margin: 1.25rem 0 0.5rem;
+    line-height: 1.3;
+  }
+  .markdown-body h1 { font-size: 1.25rem; }
+  .markdown-body h2 { font-size: 1.0625rem; }
+  .markdown-body h3 { font-size: 0.9375rem; }
+  .markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 0.875rem; }
+  .markdown-body ul, .markdown-body ol { margin: 0 0 0.75rem 1.25rem; padding: 0; }
+  .markdown-body li { margin: 0.125rem 0; }
+  .markdown-body code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.0625rem 0.3125rem;
+    font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.8125rem;
+    /* Long inline tokens break instead of stretching the line. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .markdown-body pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    max-width: 100%;
+    margin: 0.5rem 0 1rem;
+  }
+  /* Code inside a fenced block must NOT wrap — it scrolls with the <pre>. */
+  .markdown-body pre code { overflow-wrap: normal; word-break: normal; white-space: pre; }
+  .markdown-body pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: 0.8125rem;
+  }
+  /* Pygments-rendered fenced blocks. The .hl background from
+     pygments.css would otherwise clash with our card; override it
+     and let token color defs handle the foreground. */
+  .markdown-body pre.hl { background: var(--bg); }
+  .markdown-body pre.hl code.hl { background: transparent; }
+  @media (prefers-color-scheme: dark) {
+    .markdown-body pre.hl, .markdown-body pre.hl code.hl { background: #1d1f21; }
+  }
+  .markdown-body blockquote {
+    margin: 0 0 0.75rem;
+    padding: 0 0.875rem;
+    border-left: 3px solid var(--border);
+    color: var(--text-muted);
+  }
+  .markdown-body a { color: var(--text); text-decoration: underline; }
+  .markdown-body a:hover { color: var(--accent); }
+  .markdown-body table {
+    width: auto;
+    max-width: 100%;
+    margin: 0 0 0.75rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    /* Wide markdown tables scroll inside their own box rather than
+       widening the whole page. */
+    display: block;
+    overflow-x: auto;
+  }
+  .markdown-body th, .markdown-body td {
+    border: 1px solid var(--border);
+    padding: 0.375rem 0.625rem;
+  }
+  .markdown-body th { background: var(--bg); }
+  .markdown-body hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+  }
+
+  /* Edit/Preview tabs on the markdown editor. */
+  .md-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.5rem;
+  }
+  .md-tabs button {
+    padding: 0.4375rem 0.875rem;
+    font-size: 0.8125rem;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .md-tabs button:hover { color: var(--text); background: transparent; }
+  .md-tabs button.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+  [data-md-preview-body] {
+    min-height: 6rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0a;
+      --bg-card: #171717;
+      --border: #262626;
+      --text: #fafafa;
+      --text-muted: #a3a3a3;
+      --accent: #fafafa;
+      --accent-hover: #ffffff;
+    }
+    button, .btn { color: #0a0a0a; }
+    /* Native <select> arrow needs a lighter stroke against the dark card. */
+    select {
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' fill='none' stroke='%23a3a3a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    }
+    /* Render native <option>s with the card background so the popup doesn't
+       flash white on macOS Chrome/Safari when the rest of the UI is dark. */
+    option { background: var(--bg-card); color: var(--text); }
+  }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+{% block topbar %}
+<header class="topbar">
+  <a href="/" class="brand" aria-label="Zero Trust Offsec">
+    <img class="logo-light-mode" src="{% static 'img/zerotrust-logo-dark.png' %}" alt="Zero Trust Offsec">
+    <img class="logo-dark-mode" src="{% static 'img/zerotrust-logo-light.png' %}" alt="Zero Trust Offsec">
+  </a>
+  {% if request.user.is_authenticated %}
+  <button type="button" class="hamburger" id="hamburger-btn" aria-controls="primary-nav" aria-expanded="false" aria-label="Toggle navigation">
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <nav class="nav primary" id="primary-nav">
+    {% with path=request.path %}
+    <a href="{% url 'accounts:dashboard' %}" class="{% if path == '/super/dashboard/' %}active{% endif %}">Dashboard</a>
+    <a href="{% url 'findings:list' %}" class="{% if path|slice:':10' == '/findings/' %}active{% endif %}">Findings</a>
+    <a href="{% url 'vendors:list' %}" class="{% if path|slice:':9' == '/vendors/' %}active{% endif %}">Vendors</a>
+    <a href="{% url 'engagements:list' %}" class="{% if path|slice:':13' == '/engagements/' %}active{% endif %}">Engagements</a>
+    {% if request.user.is_review_authority %}
+      <span class="divider"></span>
+      <a href="{% url 'reviews:queue' %}" class="{% if path|slice:':15' == '/super/reviews/' %}active{% endif %}">Reviews</a>
+    {% endif %}
+    {% if request.user.is_superadmin %}
+      {% if not request.user.is_review_authority %}<span class="divider"></span>{% endif %}
+      <a href="{% url 'accounts:users_list' %}" class="{% if path|slice:':13' == '/super/users/' %}active{% endif %}">Users</a>
+      <a href="{% url 'approvals:list' %}" class="{% if path|slice:':17' == '/super/approvals/' %}active{% endif %}">Approvals</a>
+      <a href="/super/admin/" class="{% if path|slice:':13' == '/super/admin/' %}active{% endif %}">Admin</a>
+    {% endif %}
+    {% endwith %}
+  </nav>
+  <div class="nav profile">
+    <a href="{% url 'accounts:profile' %}" class="{% if request.path == '/super/profile/' %}active{% endif %}">{{ request.user.display_name }}</a>
+    {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+    <form method="post" action="{% url 'accounts:logout' %}" class="inline-form">
+      {% csrf_token %}
+      <button type="submit" class="btn-secondary">Sign out</button>
+    </form>
+  </div>
+  {% endif %}
+</header>
+<div class="drawer-overlay" id="drawer-overlay" aria-hidden="true"></div>
+{% endblock %}
+
+<main class="{% block main_class %}{% endblock %}">
+{% if messages %}
+<div class="flash-stack">
+  {% for m in messages %}
+    <div class="flash {{ m.tags }}">{{ m.message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+
+{% if request.user.is_authenticated %}
+<script nonce="{{ request.csp_nonce }}">
+  (function () {
+    var btn = document.getElementById("hamburger-btn");
+    var overlay = document.getElementById("drawer-overlay");
+    var nav = document.getElementById("primary-nav");
+    if (!btn || !overlay || !nav) return;
+    function open() {
+      document.body.classList.add("drawer-open");
+      btn.setAttribute("aria-expanded", "true");
+    }
+    function close() {
+      document.body.classList.remove("drawer-open");
+      btn.setAttribute("aria-expanded", "false");
+    }
+    btn.addEventListener("click", function () {
+      if (document.body.classList.contains("drawer-open")) close(); else open();
+    });
+    overlay.addEventListener("click", close);
+    nav.addEventListener("click", function (e) {
+      if (e.target.tagName === "A") close();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") close();
+    });
+  })();
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

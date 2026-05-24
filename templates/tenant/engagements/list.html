@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Engagements — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Engagements</h1>
+  <p class="meta">
+    {{ engagements|length }} engagement{{ engagements|length|pluralize }}.
+    <a href="{% url 'engagements:new' %}">New engagement</a>
+  </p>
+</div>
+
+<div class="card">
+  {% if engagements %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>Slug</th>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Target</th>
+        <th>Status</th>
+        <th>Started</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in engagements %}
+      <tr>
+        <td class="mono" data-label="Slug"><a href="{% url 'engagements:detail' e.id %}">{{ e.slug }}</a></td>
+        <td data-label="Name"><a href="{% url 'engagements:detail' e.id %}">{{ e.name }}</a></td>
+        <td data-label="Type">{{ e.get_engagement_type_display }}</td>
+        <td data-label="Target">{{ e.target_vendor|default:"—" }}</td>
+        <td data-label="Status"><span class="pill">{{ e.get_status_display }}</span></td>
+        <td data-label="Started">{{ e.started_at|date:"Y-m-d"|default:"—" }}</td>
+        <td class="actions"><a href="{% url 'engagements:edit' e.id %}">Edit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No engagements yet. <a href="{% url 'engagements:new' %}">Create one</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

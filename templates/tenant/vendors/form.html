@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ vendor.name }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'vendors:detail' vendor.slug %}">&larr; {{ vendor.name }}</a></p>
+  <h1>Edit vendor</h1>
+</div>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<p class="status error">{{ form.non_field_errors|join:" " }}</p>{% endif %}
+    <div class="field-grid">
+      <div class="field">
+        <label for="id_slug">Slug</label>
+        {{ form.slug }}
+        {% if form.slug.errors %}<p class="status error">{{ form.slug.errors|join:" " }}</p>{% endif %}
+      </div>
+      <div class="field">
+        <label for="id_name">Name</label>
+        {{ form.name }}
+        {% if form.name.errors %}<p class="status error">{{ form.name.errors|join:" " }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="field">
+      <label for="id_website">Website</label>
+      {{ form.website }}
+    </div>
+    <div class="field">
+      <label for="id_description">Description</label>
+      {{ form.description }}
+    </div>
+    <button type="submit">Save</button>
+    <a href="{% url 'vendors:detail' vendor.slug %}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+{% endblock %}
