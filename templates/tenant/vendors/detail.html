@@ -51,6 +51,18 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <h2>Affected hosts ({{ affected_hosts|length }})</h2>
+  {% if affected_hosts %}
+  <p class="meta">Hosts / URLs / assets recorded across this vendor's findings. Reusable when reporting new findings.</p>
+  <ul class="host-list">
+    {% for h in affected_hosts %}<li class="mono">{{ h.value }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="subtle">No affected hosts recorded yet.</p>
+  {% endif %}
+</div>
+
 {% if can_edit %}
 <div class="card">
   <h2>Danger zone</h2>

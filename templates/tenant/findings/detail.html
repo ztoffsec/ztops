@@ -111,7 +111,7 @@
 
 <div class="card">
   <div class="finding-tabs" data-finding-tabs>
-    <a href="?tab=description" data-tab-link="description" class="{% if active_tab == 'description' %}active{% endif %}">Description</a>
+    <a href="?tab=overview" data-tab-link="overview" class="{% if active_tab == 'overview' %}active{% endif %}">Overview</a>
     <a href="?tab=notes" data-tab-link="notes" class="{% if active_tab == 'notes' %}active{% endif %}">Notes <span class="count">{{ notes|length }}</span></a>
     <a href="?tab=researchers" data-tab-link="researchers" class="{% if active_tab == 'researchers' %}active{% endif %}">Researchers <span class="count">{{ assigned_researchers|length }}</span></a>
     <a href="?tab=artifacts" data-tab-link="artifacts" class="{% if active_tab == 'artifacts' %}active{% endif %}">Artifacts <span class="count">{{ attachments|length }}</span></a>
@@ -121,13 +121,33 @@
     <a href="?tab=metadata" data-tab-link="metadata" class="{% if active_tab == 'metadata' %}active{% endif %}">Metadata</a>
   </div>
 
-  {# ---- Description tab ---- #}
-  <div class="tab-panel {% if active_tab == 'description' %}active{% endif %}" data-tab-panel="description">
-    {% if description_html %}
+  {# ---- Overview tab: narrative / PoC / remediation / affected hosts ---- #}
+  <div class="tab-panel {% if active_tab == 'overview' %}active{% endif %}" data-tab-panel="overview">
+    {% if affected_hosts %}
+    <h3>Affected hosts</h3>
+    <ul class="host-list">
+      {% for h in affected_hosts %}<li class="mono">{{ h.value }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    <h3>Narrative</h3>
+    {% if narrative_html %}
     <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
-    <div class="markdown-body">{{ description_html|safe }}</div>
+    <div class="markdown-body">{{ narrative_html|safe }}</div>
     {% else %}
-    <p class="subtle">No description yet.{% if can_edit %} <a href="{% url 'findings:edit' finding.id %}">Add one</a>.{% endif %}</p>
+    <p class="subtle">No narrative yet.{% if can_edit %} <a href="{% url 'findings:edit' finding.id %}">Add one</a>.{% endif %}</p>
+    {% endif %}
+
+    {% if poc_html %}
+    <h3 style="margin-top: 1.25rem">Proof of Concept</h3>
+    <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+    <div class="markdown-body">{{ poc_html|safe }}</div>
+    {% endif %}
+
+    {% if remediation_html %}
+    <h3 style="margin-top: 1.25rem">Remediation</h3>
+    <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+    <div class="markdown-body">{{ remediation_html|safe }}</div>
     {% endif %}
   </div>
 

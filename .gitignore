@@ -51,9 +51,10 @@ gitleaks-report.json
 bandit-report.json
 semgrep-report.json
 var/
-# --- local-only project notes (operator's bootstrap brief) ---
+# --- local-only project notes (operator's bootstrap brief / roadmap) ---
 CLAUDE.md
 .claude/
+implementations.md
 # --- kept local, excluded from the public repo ---
 deploy/
 docs/
