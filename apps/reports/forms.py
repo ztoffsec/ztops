@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from django import forms
 
+from apps.findings.forms import FindingForm
+
 from .models import PointOfContact, Report
+
+
+class ReportFindingForm(FindingForm):
+    """FindingForm for the report context: the vendor is fixed to the
+    report's client (set server-side), so it is not a user-editable field."""
+
+    class Meta(FindingForm.Meta):
+        fields = tuple(f for f in FindingForm.Meta.fields if f != "vendor")
 
 
 class _ResearcherMultiple(forms.ModelMultipleChoiceField):

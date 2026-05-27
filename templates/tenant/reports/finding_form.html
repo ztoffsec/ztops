@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "edit" %}Edit {{ finding.internal_id }}{% else %}New finding{% endif %} — {{ report.name }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'reports:detail' report.id %}">&larr; {{ report.name }}</a></p>
+  <h1>{% if mode == "edit" %}Edit {{ finding.internal_id }}{% else %}New finding in report{% endif %}</h1>
+  <p class="meta">Client is fixed to <strong>{{ report.client.name }}</strong>; this finding is mapped to that client automatically.</p>
+
+  {% if form.errors %}
+  <div class="status error">Form has errors. Fix the highlighted fields below.</div>
+  {% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="field">
+      <label for="{{ form.title.id_for_label }}">Title</label>
+      {{ form.title }}{{ form.title.errors }}
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.channel.id_for_label }}">Channel</label>
+        {{ form.channel }}{{ form.channel.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.channel_program.id_for_label }}">Channel program</label>
+        {{ form.channel_program }}{{ form.channel_program.errors }}
+      </div>
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.cve_id.id_for_label }}">CVE ID</label>
+        {{ form.cve_id }}{{ form.cve_id.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.status.id_for_label }}">Status</label>
+        {{ form.status }}{{ form.status.errors }}
+      </div>
+    </div>
+
+    {% include "tenant/findings/_cvss_fields.html" %}
+    <p class="meta">Severity is derived from the CVSS score on save.</p>
+
+    <div class="field">
+      <label for="{{ form.narrative.id_for_label }}">Narrative (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.narrative }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.narrative.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.poc.id_for_label }}">Proof of Concept (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.poc }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.poc.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.remediation.id_for_label }}">Remediation (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.remediation }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.remediation.errors }}
+    </div>
+
+    <div class="field">
+      <label for="{{ form.affected_hosts_text.id_for_label }}">Affected hosts</label>
+      <p class="meta">One host / URL / asset per line — bulk-paste supported.</p>
+      {{ form.affected_hosts_text }}{{ form.affected_hosts_text.errors }}
+    </div>
+
+    <div class="field">
+      <label>CWE IDs</label>
+      <div data-tag-input data-mode="cwe" data-source="{% static 'data/cwes.json' %}" class="tag-input">
+        {{ form.cwe_ids }}
+        <span data-tag-input-chips></span>
+        <input type="text" data-tag-input-entry placeholder="Search by name or ID (e.g. XSS, 79)…" autocomplete="off">
+        <ul class="tag-input-suggestions" data-tag-input-suggestions></ul>
+      </div>
+      {{ form.cwe_ids.errors }}
+    </div>
+
+    <div class="field">
+      <label>References</label>
+      <div data-tag-input data-mode="url" class="tag-input">
+        {{ form.references }}
+        <span data-tag-input-chips></span>
+        <input type="text" data-tag-input-entry placeholder="Paste a URL and press Enter…" autocomplete="off">
+      </div>
+      {{ form.references.errors }}
+    </div>
+
+    <div style="margin-top: 1.25rem">
+      <button type="submit">{% if mode == "edit" %}Save changes{% else %}Create finding{% endif %}</button>
+      <a href="{% url 'reports:detail' report.id %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/cvss31.js' %}"></script>
+<script src="{% static 'js/cvss40.js' %}"></script>
+<script src="{% static 'js/tag_input.js' %}"></script>
+<script src="{% static 'js/markdown_preview.js' %}"></script>
+{% endblock %}

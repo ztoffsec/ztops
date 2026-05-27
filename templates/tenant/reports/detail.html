@@ -56,7 +56,59 @@
 </div>
 
 <div class="card">
-  <h2>Findings ({{ report.findings.count }})</h2>
-  <p class="subtle">Adding findings to a report lands in the next sub-phase.</p>
+  <div class="page-head">
+    <div class="titles"><h2>Findings ({{ report_findings|length }})</h2></div>
+    {% if can_edit %}<a href="{% url 'reports:create_finding' report.id %}" class="btn btn-create">New finding in report</a>{% endif %}
+  </div>
+
+  {% if report_findings %}
+  <table class="rows table-cards">
+    <thead>
+      <tr><th>ID</th><th>Title</th><th>Severity</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for f in report_findings %}
+      <tr>
+        <td class="mono" data-label="ID"><a href="{% url 'findings:detail' f.id %}">{{ f.internal_id }}</a></td>
+        <td data-label="Title"><a href="{% url 'findings:detail' f.id %}">{{ f.title }}</a></td>
+        <td data-label="Severity"><span class="pill sev-{{ f.severity }}">{{ f.get_severity_display }}</span></td>
+        <td data-label="Status"><span class="pill status-{{ f.status }}">{{ f.get_status_display }}</span></td>
+        <td class="actions">
+          {% if can_edit %}
+          <span class="row-actions">
+            <a href="{% url 'reports:edit_finding' report.id f.id %}" class="btn btn-secondary">Edit</a>
+            <form method="post" action="{% url 'reports:remove_finding' report.id f.id %}" class="inline-form" data-confirm="Remove {{ f.internal_id }} from this report?">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-remove">Remove</button>
+            </form>
+          </span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No findings in this report yet.</p>
+  {% endif %}
+
+  {% if can_edit %}
+  <h3 style="margin-top: 1.25rem">Add from findings DB</h3>
+  <p class="meta">Only findings reported against {{ report.client.name }} can be added.</p>
+  {% if addable_findings %}
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post" action="{% url 'reports:add_finding' report.id %}" class="filter-bar">
+    {% csrf_token %}
+    <select name="finding_id" required>
+      {% for f in addable_findings %}
+      <option value="{{ f.id }}">{{ f.internal_id }} — {{ f.title }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Add finding</button>
+  </form>
+  {% else %}
+  <p class="subtle">No more {{ report.client.name }} findings available to add.</p>
+  {% endif %}
+  {% endif %}
 </div>
 {% endblock %}

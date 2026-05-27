@@ -9,8 +9,12 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_POST
 
-from .forms import PointOfContactFormSet, ReportForm
+from apps.findings.models import Finding, ReviewState
+from apps.findings.views import _sync_affected_hosts
+
+from .forms import PointOfContactFormSet, ReportFindingForm, ReportForm
 from .models import Report
 
 if TYPE_CHECKING:
@@ -60,15 +64,30 @@ def report_detail(request: HttpRequest, report_id: str) -> HttpResponse:
         ).prefetch_related("researchers", "scope_categories", "contacts", "findings"),
         pk=report_id,
     )
+    report_findings = list(
+        report.findings.select_related("vendor").order_by("-created_at"),
+    )
+    can_edit = report.can_user_edit(request.user)
+    # "Add from DB" choices: the client's findings not already in this report.
+    addable_findings: list[Finding] = []
+    if can_edit:
+        in_report = {f.id for f in report_findings}
+        addable_findings = [
+            f
+            for f in Finding.objects.filter(vendor=report.client).order_by("internal_id")
+            if f.id not in in_report
+        ]
     return render(
         request,
         "tenant/reports/detail.html",
         {
             "report": report,
-            "can_edit": report.can_user_edit(request.user),
+            "can_edit": can_edit,
             "contacts": list(report.contacts.all()),
             "scope_categories": list(report.scope_categories.all()),
             "researchers": list(report.researchers.all()),
+            "report_findings": report_findings,
+            "addable_findings": addable_findings,
         },
     )
 
@@ -94,4 +113,117 @@ def report_edit(request: HttpRequest, report_id: str) -> HttpResponse:
         request,
         "tenant/reports/form.html",
         {"form": form, "formset": formset, "mode": "edit", "report": report},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_add_finding(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Attach an existing finding to the report.
+
+    Cross-vendor guard: only findings whose vendor IS the report's client may
+    be added, enforced server-side (not just in the dropdown), so a report can
+    never reference another client's findings.
+    """
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    finding = get_object_or_404(Finding, pk=request.POST.get("finding_id"))
+    if finding.vendor_id != report.client_id:
+        messages.error(request, "That finding belongs to a different client.")
+        return redirect("reports:detail", report_id=report.id)
+    report.findings.add(finding)
+    messages.success(request, f"Added {finding.internal_id} to the report.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_remove_finding(request: HttpRequest, report_id: str, finding_id: str) -> HttpResponse:
+    """Unlink a finding from the report (does NOT delete the finding)."""
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    finding = get_object_or_404(Finding, pk=finding_id)
+    report.findings.remove(finding)
+    messages.success(request, "Finding removed from the report.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+def report_create_finding(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Create a new finding inside a report.
+
+    The vendor is fixed to the report's client (set server-side, not chosen by
+    the user), so the finding is automatically mapped to the right client and
+    counts in the global total. Mirrors finding_new's review-state gating.
+    """
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    if request.method == "POST":
+        form = ReportFindingForm(request.POST)
+        if form.is_valid():
+            finding = form.save(commit=False)
+            finding.vendor = report.client
+            finding.reported_by = request.user
+            finding.reported_by_email = request.user.email
+            finding.review_state = (
+                ReviewState.APPROVED.value
+                if request.user.is_review_authority
+                else ReviewState.PENDING.value
+            )
+            finding.save()
+            form.save_m2m()
+            _sync_affected_hosts(finding, form.cleaned_data.get("affected_hosts_text", ""))
+            report.findings.add(finding)
+            messages.success(request, f"Created {finding.internal_id} in the report.")
+            return redirect("reports:detail", report_id=report.id)
+    else:
+        form = ReportFindingForm()
+    return render(
+        request,
+        "tenant/reports/finding_form.html",
+        {"form": form, "report": report, "mode": "create"},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+def report_edit_finding(request: HttpRequest, report_id: str, finding_id: str) -> HttpResponse:
+    """Edit a finding in place from the report (no round-trip to /findings/).
+
+    Gated by report.can_user_edit; the finding must already belong to this
+    report and its vendor stays the report's client.
+    """
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    finding = get_object_or_404(report.findings, pk=finding_id)
+    if request.method == "POST":
+        form = ReportFindingForm(request.POST, instance=finding)
+        if form.is_valid():
+            updated = form.save(commit=False)
+            updated.vendor = report.client  # vendor stays the report's client
+            updated.save()
+            form.save_m2m()
+            _sync_affected_hosts(updated, form.cleaned_data.get("affected_hosts_text", ""))
+            messages.success(request, f"Updated {finding.internal_id}.")
+            return redirect("reports:detail", report_id=report.id)
+    else:
+        form = ReportFindingForm(
+            instance=finding,
+            initial={
+                "affected_hosts_text": "\n".join(
+                    finding.affected_hosts.order_by("value").values_list("value", flat=True),
+                ),
+            },
+        )
+    return render(
+        request,
+        "tenant/reports/finding_form.html",
+        {"form": form, "report": report, "mode": "edit", "finding": finding},
     )
