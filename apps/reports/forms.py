@@ -6,7 +6,31 @@ from django import forms
 
 from apps.findings.forms import FindingForm
 
-from .models import PointOfContact, Report
+from .models import Annex, PointOfContact, Report
+
+
+class ReportContentForm(forms.ModelForm):
+    """Executive summary + conclusion (markdown)."""
+
+    class Meta:
+        model = Report
+        fields = ("executive_summary", "conclusion")
+        widgets = {  # noqa: RUF012
+            "executive_summary": forms.Textarea(attrs={"rows": 10}),
+            "conclusion": forms.Textarea(attrs={"rows": 8}),
+        }
+
+
+class AnnexForm(forms.ModelForm):
+    """A single appendix section (markdown body)."""
+
+    class Meta:
+        model = Annex
+        fields = ("title", "body")
+        widgets = {  # noqa: RUF012
+            "title": forms.TextInput(attrs={"placeholder": "Scope & methodology details"}),
+            "body": forms.Textarea(attrs={"rows": 12}),
+        }
 
 
 class ReportFindingForm(FindingForm):

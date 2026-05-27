@@ -57,6 +57,51 @@
 
 <div class="card">
   <div class="page-head">
+    <div class="titles"><h2>Executive summary &amp; conclusion</h2></div>
+    {% if can_edit %}<a href="{% url 'reports:content_edit' report.id %}" class="btn btn-secondary">Edit</a>{% endif %}
+  </div>
+  <h3>Executive summary</h3>
+  {% if executive_summary_html %}
+  <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+  <div class="markdown-body">{{ executive_summary_html|safe }}</div>
+  {% else %}<p class="subtle">Not written yet.</p>{% endif %}
+  <h3 style="margin-top: 1.25rem">Conclusion</h3>
+  {% if conclusion_html %}
+  <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+  <div class="markdown-body">{{ conclusion_html|safe }}</div>
+  {% else %}<p class="subtle">Not written yet.</p>{% endif %}
+</div>
+
+<div class="card">
+  <div class="page-head">
+    <div class="titles"><h2>Annexes ({{ annexes|length }})</h2></div>
+    {% if can_edit %}<a href="{% url 'reports:annex_new' report.id %}" class="btn btn-create">Add annex</a>{% endif %}
+  </div>
+  {% for item in annexes %}
+  <div style="border-bottom: 1px solid var(--border); padding: 0.75rem 0;">
+    <div class="page-head">
+      <div class="titles"><h3>Annex {{ item.letter }} — {{ item.annex.title }}</h3></div>
+      {% if can_edit %}
+      <span class="row-actions">
+        <form method="post" action="{% url 'reports:annex_move' report.id item.annex.id 'up' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↑</button></form>
+        <form method="post" action="{% url 'reports:annex_move' report.id item.annex.id 'down' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↓</button></form>
+        <a href="{% url 'reports:annex_edit' report.id item.annex.id %}" class="btn btn-secondary">Edit</a>
+        <form method="post" action="{% url 'reports:annex_remove' report.id item.annex.id %}" class="inline-form" data-confirm="Remove this annex?">{% csrf_token %}<button type="submit" class="btn btn-remove">Remove</button></form>
+      </span>
+      {% endif %}
+    </div>
+    {% if item.body_html %}
+    <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+    <div class="markdown-body">{{ item.body_html|safe }}</div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <p class="subtle">No annexes yet.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="page-head">
     <div class="titles"><h2>Findings ({{ report_findings|length }})</h2></div>
     {% if can_edit %}<a href="{% url 'reports:create_finding' report.id %}" class="btn btn-create">New finding in report</a>{% endif %}
   </div>
