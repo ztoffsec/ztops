@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "edit" %}Edit section{% else %}New section{% endif %} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'report_admin:template_edit' template.slug %}">&larr; {{ template.name }}</a></p>
+  <h1>{% if mode == "edit" %}Edit section{% else %}New section{% endif %}</h1>
+
+  {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.kind.id_for_label }}">Kind</label>
+        {{ form.kind }}{{ form.kind.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.title.id_for_label }}">Title</label>
+        {{ form.title }}{{ form.title.errors }}
+      </div>
+    </div>
+    <div class="field"><label>{{ form.enabled }} Enabled</label></div>
+    <div class="field">
+      <label for="{{ form.body.id_for_label }}">Boilerplate body (markdown)</label>
+      <p class="meta">Only used for Confidentiality, Methodology and Custom sections; dynamic sections are generated from the report.</p>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.body }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.body.errors }}
+    </div>
+    <div style="margin-top: 1.25rem">
+      <button type="submit">{% if mode == "edit" %}Save{% else %}Add{% endif %}</button>
+      <a href="{% url 'report_admin:template_edit' template.slug %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/markdown_preview.js' %}"></script>
+{% endblock %}

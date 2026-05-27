@@ -6,7 +6,40 @@ from django import forms
 
 from apps.findings.forms import FindingForm
 
-from .models import Annex, PointOfContact, Report
+from .models import (
+    Annex,
+    PointOfContact,
+    Report,
+    ReportTemplate,
+    ScopeCategory,
+    TemplateSection,
+)
+
+
+class ReportTemplateForm(forms.ModelForm):
+    class Meta:
+        model = ReportTemplate
+        fields = ("name", "is_default", "is_active")
+        widgets = {"name": forms.TextInput(attrs={"placeholder": "Pen Test"})}  # noqa: RUF012
+
+
+class TemplateSectionForm(forms.ModelForm):
+    class Meta:
+        model = TemplateSection
+        fields = ("kind", "title", "enabled", "body")
+        widgets = {"body": forms.Textarea(attrs={"rows": 10})}  # noqa: RUF012
+
+
+class ScopeCategoryForm(forms.ModelForm):
+    """Superadmin-editable engagement scope/type + its methodology snippet."""
+
+    class Meta:
+        model = ScopeCategory
+        fields = ("name", "is_active", "methodology")
+        widgets = {  # noqa: RUF012
+            "name": forms.TextInput(attrs={"placeholder": "Web Application"}),
+            "methodology": forms.Textarea(attrs={"rows": 8}),
+        }
 
 
 class ReportContentForm(forms.ModelForm):
@@ -58,6 +91,7 @@ class ReportForm(forms.ModelForm):
         model = Report
         fields = (
             "name",
+            "template",
             "client",
             "researchers",
             "engagement_manager",

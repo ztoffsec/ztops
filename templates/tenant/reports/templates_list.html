@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Report templates — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Report config</h1>
+  <div class="scope-tabs">
+    <a href="{% url 'report_admin:templates_list' %}" class="active">Templates</a>
+    <a href="{% url 'report_admin:scope_list' %}">Scope categories</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="page-head">
+    <div class="titles"><h2>Templates</h2></div>
+    <a href="{% url 'report_admin:template_new' %}" class="btn btn-create">New template</a>
+  </div>
+  {% if templates %}
+  <table class="rows table-cards">
+    <thead><tr><th>Name</th><th>Default</th><th>Active</th><th>Sections</th><th></th></tr></thead>
+    <tbody>
+      {% for t in templates %}
+      <tr>
+        <td data-label="Name"><a href="{% url 'report_admin:template_edit' t.slug %}">{{ t.name }}</a></td>
+        <td data-label="Default">{% if t.is_default %}<span class="pill">default</span>{% else %}—{% endif %}</td>
+        <td data-label="Active">{% if t.is_active %}yes{% else %}<span class="subtle">no</span>{% endif %}</td>
+        <td data-label="Sections" class="mono">{{ t.sections.count }}</td>
+        <td class="actions"><a href="{% url 'report_admin:template_edit' t.slug %}">Edit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="subtle">No templates yet.</p>{% endif %}
+</div>
+{% endblock %}

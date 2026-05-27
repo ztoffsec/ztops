@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Scope categories — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Report config</h1>
+  <div class="scope-tabs">
+    <a href="{% url 'report_admin:templates_list' %}">Templates</a>
+    <a href="{% url 'report_admin:scope_list' %}" class="active">Scope categories</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="page-head">
+    <div class="titles">
+      <h2>Scope categories</h2>
+      <p class="meta">Engagement types selectable on a report. Each carries a methodology snippet used to build the report's Methodology section.</p>
+    </div>
+    <a href="{% url 'report_admin:scope_new' %}" class="btn btn-create">New scope</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if categories %}
+  <table class="rows table-cards">
+    <thead><tr><th>Name</th><th>Active</th><th>Has methodology</th><th></th></tr></thead>
+    <tbody>
+      {% for c in categories %}
+      <tr>
+        <td data-label="Name">{{ c.name }}</td>
+        <td data-label="Active">{% if c.is_active %}yes{% else %}<span class="subtle">no</span>{% endif %}</td>
+        <td data-label="Methodology">{% if c.methodology %}yes{% else %}<span class="subtle">—</span>{% endif %}</td>
+        <td class="actions">
+          <span class="row-actions">
+            <form method="post" action="{% url 'report_admin:scope_move' c.slug 'up' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↑</button></form>
+            <form method="post" action="{% url 'report_admin:scope_move' c.slug 'down' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↓</button></form>
+            <a href="{% url 'report_admin:scope_edit' c.slug %}" class="btn btn-secondary">Edit</a>
+            <form method="post" action="{% url 'report_admin:scope_remove' c.slug %}" class="inline-form" data-confirm="Remove “{{ c.name }}”?">{% csrf_token %}<button type="submit" class="btn btn-remove">Remove</button></form>
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="subtle">No scope categories yet.</p>{% endif %}
+</div>
+{% endblock %}

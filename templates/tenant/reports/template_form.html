@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "edit" %}Edit {{ template.name }}{% else %}New template{% endif %} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'report_admin:templates_list' %}">&larr; Report config</a></p>
+  <h1>{% if mode == "edit" %}Edit {{ template.name }}{% else %}New template{% endif %}</h1>
+
+  {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field">
+      <label for="{{ form.name.id_for_label }}">Name</label>
+      {{ form.name }}{{ form.name.errors }}
+    </div>
+    <div class="field"><label>{{ form.is_default }} Default template (used when none is chosen)</label></div>
+    <div class="field"><label>{{ form.is_active }} Active (selectable on new reports)</label></div>
+    <button type="submit">{% if mode == "edit" %}Save{% else %}Create{% endif %}</button>
+  </form>
+</div>
+
+{% if mode == "edit" %}
+<div class="card">
+  <div class="page-head">
+    <div class="titles"><h2>Sections</h2></div>
+    <a href="{% url 'report_admin:section_new' template.slug %}" class="btn btn-create">Add section</a>
+  </div>
+  {% if sections %}
+  <table class="rows table-cards">
+    <thead><tr><th>#</th><th>Title</th><th>Kind</th><th>Enabled</th><th></th></tr></thead>
+    <tbody>
+      {% for s in sections %}
+      <tr>
+        <td data-label="#" class="mono">{{ forloop.counter }}</td>
+        <td data-label="Title">{{ s.title }}</td>
+        <td data-label="Kind"><span class="pill">{{ s.get_kind_display }}</span></td>
+        <td data-label="Enabled">{% if s.enabled %}yes{% else %}<span class="subtle">no</span>{% endif %}</td>
+        <td class="actions">
+          <span class="row-actions">
+            <form method="post" action="{% url 'report_admin:section_move' template.slug s.id 'up' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↑</button></form>
+            <form method="post" action="{% url 'report_admin:section_move' template.slug s.id 'down' %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-secondary">↓</button></form>
+            <a href="{% url 'report_admin:section_edit' template.slug s.id %}" class="btn btn-secondary">Edit</a>
+            <form method="post" action="{% url 'report_admin:section_remove' template.slug s.id %}" class="inline-form" data-confirm="Remove section “{{ s.title }}”?">{% csrf_token %}<button type="submit" class="btn btn-remove">Remove</button></form>
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="subtle">No sections.</p>{% endif %}
+
+  <div style="margin-top: 1rem">
+    <form method="post" action="{% url 'report_admin:template_remove' template.slug %}" class="inline-form" data-confirm="Delete this whole template?">{% csrf_token %}<button type="submit" class="btn btn-remove">Delete template</button></form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

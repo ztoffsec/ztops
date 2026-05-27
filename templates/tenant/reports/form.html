@@ -39,9 +39,15 @@
         {% if mode == "edit" %}data-autosave-url="{% url 'reports:autosave' report.id %}" data-autosave-pk="{{ report.id }}" data-autosave-model="report" data-autosave-fields="name"{% endif %}>
     {% csrf_token %}
 
-    <div class="field">
-      <label for="{{ form.name.id_for_label }}">Report name</label>
-      {{ form.name }}{{ form.name.errors }}
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.name.id_for_label }}">Report name</label>
+        {{ form.name }}{{ form.name.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.template.id_for_label }}">Template</label>
+        {{ form.template }}{{ form.template.errors }}
+      </div>
     </div>
 
     <div class="field-grid">

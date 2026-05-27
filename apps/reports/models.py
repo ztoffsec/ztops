@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from django.db import models
+from django.utils.text import slugify
 
 from core.security.uuids import uuid7
 
@@ -31,6 +32,9 @@ class ScopeCategory(models.Model):
     slug = models.SlugField(max_length=100, unique=True)
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # Per-scope methodology boilerplate (markdown). Concatenated into a
+    # report's Methodology section for each selected scope. Superadmin-edited.
+    methodology = models.TextField(blank=True)
 
     class Meta:
         ordering: ClassVar[tuple[str, ...]] = ("order", "name")
@@ -38,6 +42,11 @@ class ScopeCategory(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = slugify(self.name)[:100]
+        super().save(*args, **kwargs)
 
 
 class ReportStatus(models.TextChoices):
@@ -85,6 +94,13 @@ class Report(models.Model):
         blank=True,
     )
 
+    template = models.ForeignKey(
+        "ReportTemplate",
+        on_delete=models.SET_NULL,
+        related_name="reports",
+        null=True,
+        blank=True,
+    )
     engagement_start = models.DateField(null=True, blank=True)
     engagement_end = models.DateField(null=True, blank=True)
     classification = models.CharField(max_length=40, default="CONFIDENTIAL")
@@ -258,3 +274,83 @@ class ReportReviewNote(models.Model):
 
     def __str__(self) -> str:
         return f"ReviewNote on {self.report_id} by {self.author_email or 'unknown'}"
+
+
+class SectionKind(models.TextChoices):
+    """Section types in a report template.
+
+    Dynamic kinds are generated from the report's data at render time; the
+    body is editable boilerplate only for the boilerplate kinds
+    (confidentiality / methodology intro / custom).
+    """
+
+    COVER = "cover", "Cover page"
+    CONFIDENTIALITY = "confidentiality", "Confidentiality disclaimer"
+    INDEX = "index", "Index"
+    EXECUTIVE_SUMMARY = "executive_summary", "Executive summary"
+    FINDINGS_SUMMARY = "findings_summary", "Findings summary table"
+    METHODOLOGY = "methodology", "Methodology"
+    FINDINGS = "findings", "Findings"
+    CONCLUSION = "conclusion", "Conclusion"
+    ANNEXES = "annexes", "Annexes"
+    CUSTOM = "custom", "Custom section"
+
+
+# Kinds whose `body` is editable boilerplate (everything else is generated).
+_BOILERPLATE_KINDS = frozenset(
+    {SectionKind.CONFIDENTIALITY.value, SectionKind.METHODOLOGY.value, SectionKind.CUSTOM.value},
+)
+
+
+class ReportTemplate(models.Model):
+    """A named report template (e.g. Pen Test, Red Team) the researcher picks
+    when building a report. Superadmin-editable structure."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("name",)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.slug:
+            self.slug = slugify(self.name)[:100]
+        super().save(*args, **kwargs)
+        # Enforce a single default template.
+        if self.is_default:
+            ReportTemplate.objects.exclude(pk=self.pk).filter(is_default=True).update(
+                is_default=False,
+            )
+
+
+class TemplateSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    template = models.ForeignKey(
+        ReportTemplate,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+    kind = models.CharField(max_length=30, choices=SectionKind.choices)
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("order",)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.template_id})"
+
+    @property
+    def uses_body(self) -> bool:
+        """True when this section's body is editable boilerplate."""
+        return self.kind in _BOILERPLATE_KINDS
