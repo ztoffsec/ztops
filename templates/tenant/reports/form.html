@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{% if mode == "create" %}New report{% else %}Edit {{ report.name }}{% endif %} — ZTOps{% endblock %}
 
@@ -27,12 +28,15 @@
 <div class="card">
   <h1>{% if mode == "create" %}New report{% else %}Edit {{ report.name }}{% endif %}</h1>
 
+  {% if mode == "edit" %}<p class="meta">The report name autosaves as you type; other fields save with the button. <span data-autosave-status class="subtle"></span></p>{% endif %}
+
   {% if form.errors or formset.errors %}
   <div class="status error">Form has errors. Fix the highlighted fields below.</div>
   {% endif %}
 
   {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
-  <form method="post">
+  <form method="post"
+        {% if mode == "edit" %}data-autosave-url="{% url 'reports:autosave' report.id %}" data-autosave-pk="{{ report.id }}" data-autosave-model="report" data-autosave-fields="name"{% endif %}>
     {% csrf_token %}
 
     <div class="field">
@@ -104,6 +108,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/report_autosave.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
   // Clone the last (empty) point-of-contact row and bump the formset count.
   (function () {

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
@@ -351,3 +353,71 @@ def report_annex_move(
             a.order, b.order = swap, idx
         Annex.objects.bulk_update([a, b], ["order"])
     return redirect("reports:detail", report_id=report.id)
+
+
+# ---- Autosave (server-side draft) ---------------------------------------
+
+# Strict per-model allowlist of fields autosave may write, with CharField
+# length caps (None = TextField, capped at _TEXT_CAP). This is the security
+# boundary: autosave can NEVER touch review_state, vendor, reported_by, etc.
+_TEXT_CAP = 200_000
+_AUTOSAVE_FIELDS: dict[str, dict[str, int | None]] = {
+    "report": {"name": 300, "executive_summary": None, "conclusion": None},
+    "annex": {"title": 200, "body": None},
+    "finding": {
+        "title": 300,
+        "narrative": None,
+        "poc": None,
+        "remediation": None,
+        "channel_program": 100,
+        "cve_id": 30,
+        "cvss_31_vector": 200,
+        "cvss_4_vector": 200,
+    },
+}
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_autosave(request: HttpRequest, report_id: str) -> JsonResponse:
+    """Persist a single edited field as a draft (text fields only).
+
+    Body JSON: {"model": report|annex|finding, "pk": "...", "field": "...",
+    "value": "..."}. Gated by report.can_user_edit; the field must be in the
+    per-model allowlist and the target object must belong to this report.
+    """
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    try:
+        body = json.loads(request.body or b"{}")
+    except (ValueError, TypeError):
+        return JsonResponse({"error": "invalid_json"}, status=400)
+
+    model = body.get("model")
+    field = body.get("field")
+    pk = str(body.get("pk") or "")
+    value = body.get("value")
+    allowed = _AUTOSAVE_FIELDS.get(model or "")
+    if allowed is None or field not in allowed or not isinstance(value, str):
+        return JsonResponse({"error": "not_allowed"}, status=400)
+
+    cap = allowed[field]
+    value = value[: cap if cap is not None else _TEXT_CAP]
+
+    if model == "report":
+        if pk != str(report.id):
+            raise Http404
+        target = Report.objects.filter(pk=report.id)
+    elif model == "annex":
+        get_object_or_404(report.annexes, pk=pk)  # membership check
+        from .models import Annex  # noqa: PLC0415
+
+        target = Annex.objects.filter(pk=pk)
+    else:  # finding
+        get_object_or_404(report.findings, pk=pk)  # membership check
+        target = Finding.objects.filter(pk=pk)
+
+    target.update(**{field: value})
+    return JsonResponse({"ok": True, "saved_at": timezone.now().strftime("%H:%M:%S")})

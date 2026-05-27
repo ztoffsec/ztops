@@ -13,8 +13,10 @@
   <div class="status error">Form has errors. Fix the highlighted fields below.</div>
   {% endif %}
 
+  {% if mode == "edit" %}<p class="meta">Changes autosave as you type. <span data-autosave-status class="subtle"></span></p>{% endif %}
   {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
-  <form method="post">
+  <form method="post"
+        {% if mode == "edit" %}data-autosave-url="{% url 'reports:autosave' report.id %}" data-autosave-pk="{{ finding.id }}" data-autosave-model="finding" data-autosave-fields="title,narrative,poc,remediation,channel_program,cve_id,cvss_31_vector,cvss_4_vector"{% endif %}>
     {% csrf_token %}
 
     <div class="field">
@@ -115,4 +117,5 @@
 <script src="{% static 'js/cvss40.js' %}"></script>
 <script src="{% static 'js/tag_input.js' %}"></script>
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script src="{% static 'js/report_autosave.js' %}"></script>
 {% endblock %}

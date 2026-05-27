@@ -14,6 +14,7 @@ urlpatterns = [
     path("<uuid:report_id>/", views.report_detail, name="detail"),
     path("<uuid:report_id>/edit/", views.report_edit, name="edit"),
     path("<uuid:report_id>/content/", views.report_content_edit, name="content_edit"),
+    path("<uuid:report_id>/autosave/", views.report_autosave, name="autosave"),
     path("<uuid:report_id>/annexes/new/", views.report_annex_new, name="annex_new"),
     path(
         "<uuid:report_id>/annexes/<uuid:annex_id>/edit/", views.report_annex_edit, name="annex_edit"
