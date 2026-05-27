@@ -71,6 +71,31 @@ def test_owner_can_upload(client: Client, settings_root: Path) -> None:
 
 
 @pytest.mark.django_db
+def test_owner_can_upload_multiple_files_at_once(client: Client, settings_root: Path) -> None:
+    owner = _user("multi@example.com")
+    f = _finding(owner)
+    client.force_login(owner)
+    response = client.post(
+        f"/findings/artifacts/{f.id}/upload/",
+        data={
+            "file": [
+                SimpleUploadedFile("a.txt", b"alpha"),
+                SimpleUploadedFile("b.txt", b"bravo"),
+                SimpleUploadedFile("c.txt", b"charlie"),
+            ],
+        },
+    )
+    assert response.status_code == 302
+    assert Attachment.objects.filter(finding=f).count() == 3
+    assert set(Attachment.objects.filter(finding=f).values_list("filename", flat=True)) == {
+        "a.txt",
+        "b.txt",
+        "c.txt",
+    }
+    _ = settings_root
+
+
+@pytest.mark.django_db
 def test_non_assigned_cannot_upload(client: Client, settings_root: Path) -> None:
     owner = _user("real@example.com")
     intruder = _user("intr@example.com")

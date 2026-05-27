@@ -287,9 +287,9 @@
     {% if can_edit %}
     <form method="post" action="{% url 'attachments:upload' finding.id %}" enctype="multipart/form-data" class="dropzone">
       {% csrf_token %}
-      <p class="meta">Pick a file to upload as evidence for this finding.</p>
+      <p class="meta">Pick one or more files to upload as evidence for this finding.</p>
       <div class="field" style="margin-bottom: 0.75rem">
-        <input type="file" name="file" required>
+        <input type="file" name="file" multiple required>
       </div>
       <button type="submit">Upload</button>
     </form>
