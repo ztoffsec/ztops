@@ -36,7 +36,6 @@ class FindingForm(forms.ModelForm):
             "cvss_4_score",
             "cvss_4_vector",
             "status",
-            "engagement",
             "narrative",
             "poc",
             "remediation",

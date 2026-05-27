@@ -112,7 +112,7 @@ def findings_list(request: HttpRequest) -> HttpResponse:  # noqa: PLR0912, PLR09
     sort_key, sort_desc = _parse_sort(request.GET.get("sort"))
     per_page = _parse_per_page(request.GET.get("per_page"))
 
-    qs = Finding.objects.select_related("vendor", "engagement", "reported_by")
+    qs = Finding.objects.select_related("vendor", "reported_by")
     if scope == _SCOPE_MINE:
         # "My findings" shows the user's own reports + anything they
         # collaborate on, regardless of review_state — the reporter
@@ -294,7 +294,6 @@ def finding_detail(request: HttpRequest, finding_id: str) -> HttpResponse:
     finding = get_object_or_404(
         Finding.objects.select_related(
             "vendor",
-            "engagement",
             "reported_by",
             "reviewed_by",
         ).prefetch_related("notes", "assigned_researchers"),

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report.name }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'reports:list' %}">&larr; Reports</a></p>
+  <div class="page-head">
+    <div class="titles">
+      <h1>{{ report.name }}</h1>
+      <p class="meta">
+        <span class="pill">{{ report.get_status_display }}</span>
+        <span class="pill">{{ report.classification }}</span>
+      </p>
+    </div>
+    {% if can_edit %}<a href="{% url 'reports:edit' report.id %}" class="btn btn-secondary">Edit</a>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Engagement</h2>
+  <table class="table-cards">
+    <tbody>
+      <tr><th>Client</th><td>{{ report.client.name }}</td></tr>
+      <tr><th>Engagement manager</th><td>{{ report.engagement_manager.display_name|default:"—" }}</td></tr>
+      <tr><th>Researchers</th><td>
+        {% for r in researchers %}{{ r.display_name|default:r.email }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+      </td></tr>
+      <tr><th>Scope</th><td>
+        {% for s in scope_categories %}<span class="pill">{{ s.name }}</span> {% empty %}—{% endfor %}
+      </td></tr>
+      <tr><th>Dates</th><td>{{ report.engagement_start|date:"Y-m-d"|default:"—" }} → {{ report.engagement_end|date:"Y-m-d"|default:"—" }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Points of contact ({{ contacts|length }})</h2>
+  {% if contacts %}
+  <table class="table-cards">
+    <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Phone</th></tr></thead>
+    <tbody>
+      {% for c in contacts %}
+      <tr>
+        <td data-label="Name">{{ c.name }}</td>
+        <td data-label="Role">{{ c.get_role_display }}</td>
+        <td data-label="Email" class="mono">{{ c.email|default:"—" }}</td>
+        <td data-label="Phone" class="mono">{{ c.phone|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No points of contact recorded.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Findings ({{ report.findings.count }})</h2>
+  <p class="subtle">Adding findings to a report lands in the next sub-phase.</p>
+</div>
+{% endblock %}

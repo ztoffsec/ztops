@@ -58,9 +58,11 @@ INSTALLED_APPS: list[str] = [
     "apps.audit",
     "apps.approvals",
     "apps.vendors",
+    # Retired (migration stub only; tables dropped in engagements/0002).
     "apps.engagements",
     "apps.findings",
     "apps.attachments",
+    "apps.reports",
     # Django built-ins
     "django.contrib.contenttypes",
     "django.contrib.auth",

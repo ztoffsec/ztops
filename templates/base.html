@@ -711,7 +711,13 @@
       --accent: #fafafa;
       --accent-hover: #ffffff;
     }
+    /* Filled primary buttons sit on the light accent → dark text. */
     button, .btn { color: #0a0a0a; }
+    /* Non-filled variants must NOT inherit that dark text or they vanish on
+       the dark background. Restore their own readable colors. */
+    .btn-secondary { color: var(--text); }
+    .btn-remove { color: var(--error); }
+    .btn-approve { color: var(--success); }
     /* Native <select> arrow needs a lighter stroke against the dark card. */
     select {
       background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' fill='none' stroke='%23a3a3a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
@@ -741,7 +747,7 @@
     <a href="{% url 'accounts:dashboard' %}" class="{% if path == '/super/dashboard/' %}active{% endif %}">Dashboard</a>
     <a href="{% url 'findings:list' %}" class="{% if path|slice:':10' == '/findings/' %}active{% endif %}">Findings</a>
     <a href="{% url 'vendors:list' %}" class="{% if path|slice:':9' == '/vendors/' %}active{% endif %}">Vendors</a>
-    <a href="{% url 'engagements:list' %}" class="{% if path|slice:':13' == '/engagements/' %}active{% endif %}">Engagements</a>
+    <a href="{% url 'reports:list' %}" class="{% if path|slice:':9' == '/reports/' %}active{% endif %}">Reports</a>
     {% if request.user.is_review_authority %}
       <span class="divider"></span>
       <a href="{% url 'reviews:queue' %}" class="{% if path|slice:':15' == '/super/reviews/' %}active{% endif %}">Reviews</a>

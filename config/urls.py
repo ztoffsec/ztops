@@ -39,7 +39,7 @@ urlpatterns = [
     path("findings/", include("apps.findings.urls")),
     path("findings/artifacts/", include("apps.attachments.urls")),
     path("vendors/", include("apps.vendors.urls")),
-    path("engagements/", include("apps.engagements.urls")),
+    path("reports/", include("apps.reports.urls")),
     path("super/", include("apps.accounts.urls")),
     path("super/approvals/", include("apps.approvals.urls")),
     path("super/reviews/", include("apps.findings.reviews_urls")),

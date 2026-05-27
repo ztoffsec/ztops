@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Reports — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="page-head">
+    <div class="titles">
+      <h1>Reports</h1>
+      <p class="meta">{{ reports|length }} report{{ reports|length|pluralize }}.</p>
+    </div>
+    <a href="{% url 'reports:new' %}" class="btn btn-create">New report</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if reports %}
+  <table class="rows table-cards">
+    <thead>
+      <tr>
+        <th>Report</th>
+        <th>Client</th>
+        <th>Manager</th>
+        <th>Status</th>
+        <th>Dates</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reports %}
+      <tr>
+        <td data-label="Report"><a href="{% url 'reports:detail' r.id %}">{{ r.name }}</a></td>
+        <td data-label="Client">{{ r.client.name }}</td>
+        <td data-label="Manager">{{ r.engagement_manager.display_name|default:"—" }}</td>
+        <td data-label="Status"><span class="pill">{{ r.get_status_display }}</span></td>
+        <td data-label="Dates" class="subtle">
+          {{ r.engagement_start|date:"Y-m-d"|default:"—" }} → {{ r.engagement_end|date:"Y-m-d"|default:"—" }}
+        </td>
+        <td class="actions"><a href="{% url 'reports:detail' r.id %}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No reports yet. <a href="{% url 'reports:new' %}">Create the first one</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}
