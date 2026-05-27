@@ -580,3 +580,68 @@ def test_cannot_remove_template_in_use(client: Client) -> None:
     resp = client.post("/super/report-config/templates/pen-test/remove/")
     assert resp.status_code == 302
     assert ReportTemplate.objects.filter(slug="pen-test").exists()  # blocked
+
+
+# ---- Phase 6: PDF export ------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_assemble_report_orders_findings_by_severity() -> None:
+    from decimal import Decimal  # noqa: PLC0415
+
+    from apps.reports.render import assemble_report  # noqa: PLC0415
+
+    sa = _user("ax@example.com", role=Role.SUPERADMIN.value)
+    vendor = _vendor()
+    report = Report.objects.create(name="R", client=vendor, created_by=sa)
+    low = _finding(vendor, sa, "low one")
+    low.cvss_31_score = Decimal("2.0")
+    low.save()
+    crit = _finding(vendor, sa, "crit one")
+    crit.cvss_31_score = Decimal("9.5")
+    crit.save()
+    report.findings.add(low, crit)
+    ctx = assemble_report(report)
+    sevs = [f["finding"].severity for f in ctx["findings"]]
+    assert sevs == ["critical", "low"]  # worst first
+
+
+@pytest.mark.django_db
+def test_safe_url_fetcher_blocks_network() -> None:
+    from apps.reports.render import safe_url_fetcher  # noqa: PLC0415
+
+    with pytest.raises(ValueError, match="Blocked non-data URL"):
+        safe_url_fetcher("https://evil.example/x.png")
+    with pytest.raises(ValueError, match="Blocked non-data URL"):
+        safe_url_fetcher("file:///etc/passwd")
+
+
+@pytest.mark.django_db
+def test_export_blocked_until_approved(client: Client) -> None:
+    creator = _user("ex@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=creator, status="draft")
+    client.force_login(creator)
+    assert client.get(f"/reports/{report.id}/export.pdf").status_code == 404  # not approved
+
+
+@pytest.mark.django_db
+def test_export_approved_returns_pdf(client: Client) -> None:
+    sa = _user("ep@example.com", role=Role.SUPERADMIN.value)
+    report = Report.objects.create(
+        name="Acme Report", client=_vendor(), created_by=sa, status="approved"
+    )
+    client.force_login(sa)
+    resp = client.get(f"/reports/{report.id}/export.pdf")
+    assert resp.status_code == 200
+    assert resp["Content-Type"] == "application/pdf"
+    assert resp["Content-Disposition"].startswith("attachment;")
+    assert resp.content[:5] == b"%PDF-"
+
+
+@pytest.mark.django_db
+def test_outsider_cannot_export_nonapproved(client: Client) -> None:
+    creator = _user("eo@example.com")
+    outsider = _user("eoo@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=creator, status="draft")
+    client.force_login(outsider)
+    assert client.get(f"/reports/{report.id}/export.pdf").status_code == 404

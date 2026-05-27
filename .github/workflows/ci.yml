@@ -126,6 +126,9 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen --all-groups
+      # WeasyPrint (PDF export) needs pango/cairo/gdk-pixbuf at runtime.
+      - name: WeasyPrint system libs
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi8
       # pytest-django imports DJANGO_SETTINGS_MODULE at startup. Guard until config/ lands.
       - name: pytest
         run: |

@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
@@ -812,3 +813,39 @@ def section_move(request: HttpRequest, slug: str, section_id: str, direction: st
             a.order, b.order = swap, idx
         TemplateSection.objects.bulk_update([a, b], ["order"])
     return redirect("report_admin:template_edit", slug=tpl.slug)
+
+
+# ---- PDF export ---------------------------------------------------------
+
+
+@login_required(login_url="/super/login/")
+def report_export_pdf(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Render an APPROVED report to PDF, assembled from its template.
+
+    Gated by can_user_export (approved + can_view). The WeasyPrint render
+    uses a data:-only url_fetcher so a crafted resource in report content
+    can't trigger a server-side fetch (SSRF)."""
+    from django.http import HttpResponse  # noqa: PLC0415
+    from django.template.loader import render_to_string  # noqa: PLC0415
+
+    from .render import assemble_report, safe_url_fetcher  # noqa: PLC0415
+
+    report = get_object_or_404(
+        Report.objects.select_related("client", "template").prefetch_related(
+            "scope_categories",
+            "findings",
+            "annexes",
+        ),
+        pk=report_id,
+    )
+    if not report.can_user_export(request.user):
+        raise Http404
+
+    html_string = render_to_string("tenant/reports/export.html", assemble_report(report))
+    from weasyprint import HTML  # noqa: PLC0415
+
+    pdf = HTML(string=html_string, url_fetcher=safe_url_fetcher).write_pdf()
+    response = HttpResponse(pdf, content_type="application/pdf")
+    slug = slugify(report.name) or "report"
+    response["Content-Disposition"] = f'attachment; filename="{slug}.pdf"'
+    return response
