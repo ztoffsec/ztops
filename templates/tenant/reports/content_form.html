@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Edit content — {{ report.name }} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'reports:detail' report.id %}">&larr; {{ report.name }}</a></p>
+  <h1>Executive summary &amp; conclusion</h1>
+
+  {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field">
+      <label for="{{ form.executive_summary.id_for_label }}">Executive summary (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.executive_summary }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.executive_summary.errors }}
+    </div>
+
+    <div class="field">
+      <label for="{{ form.conclusion.id_for_label }}">Conclusion (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.conclusion }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.conclusion.errors }}
+    </div>
+
+    <div style="margin-top: 1.25rem">
+      <button type="submit">Save</button>
+      <a href="{% url 'reports:detail' report.id %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/markdown_preview.js' %}"></script>
+{% endblock %}

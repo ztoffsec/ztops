@@ -11,11 +11,18 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
+from apps.findings.markdown import render_markdown
 from apps.findings.models import Finding, ReviewState
 from apps.findings.views import _sync_affected_hosts
 
-from .forms import PointOfContactFormSet, ReportFindingForm, ReportForm
-from .models import Report
+from .forms import (
+    AnnexForm,
+    PointOfContactFormSet,
+    ReportContentForm,
+    ReportFindingForm,
+    ReportForm,
+)
+from .models import Annex, Report
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -77,6 +84,10 @@ def report_detail(request: HttpRequest, report_id: str) -> HttpResponse:
             for f in Finding.objects.filter(vendor=report.client).order_by("internal_id")
             if f.id not in in_report
         ]
+    annexes = [
+        {"annex": a, "letter": chr(65 + i), "body_html": render_markdown(a.body)}
+        for i, a in enumerate(report.annexes.order_by("order", "title"))
+    ]
     return render(
         request,
         "tenant/reports/detail.html",
@@ -88,6 +99,9 @@ def report_detail(request: HttpRequest, report_id: str) -> HttpResponse:
             "researchers": list(report.researchers.all()),
             "report_findings": report_findings,
             "addable_findings": addable_findings,
+            "executive_summary_html": render_markdown(report.executive_summary),
+            "conclusion_html": render_markdown(report.conclusion),
+            "annexes": annexes,
         },
     )
 
@@ -227,3 +241,113 @@ def report_edit_finding(request: HttpRequest, report_id: str, finding_id: str) -
         "tenant/reports/finding_form.html",
         {"form": form, "report": report, "mode": "edit", "finding": finding},
     )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+def report_content_edit(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Edit the executive summary + conclusion (markdown)."""
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    if request.method == "POST":
+        form = ReportContentForm(request.POST, instance=report)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Report content updated.")
+            return redirect("reports:detail", report_id=report.id)
+    else:
+        form = ReportContentForm(instance=report)
+    return render(
+        request,
+        "tenant/reports/content_form.html",
+        {"form": form, "report": report},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+def report_annex_new(request: HttpRequest, report_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    if request.method == "POST":
+        form = AnnexForm(request.POST)
+        if form.is_valid():
+            annex = form.save(commit=False)
+            annex.report = report
+            last = report.annexes.order_by("-order").first()
+            annex.order = (last.order + 1) if last else 0
+            annex.save()
+            messages.success(request, f"Annex “{annex.title}” added.")
+            return redirect("reports:detail", report_id=report.id)
+    else:
+        form = AnnexForm()
+    return render(
+        request,
+        "tenant/reports/annex_form.html",
+        {"form": form, "report": report, "mode": "create"},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+def report_annex_edit(request: HttpRequest, report_id: str, annex_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    annex = get_object_or_404(report.annexes, pk=annex_id)
+    if request.method == "POST":
+        form = AnnexForm(request.POST, instance=annex)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Annex “{annex.title}” updated.")
+            return redirect("reports:detail", report_id=report.id)
+    else:
+        form = AnnexForm(instance=annex)
+    return render(
+        request,
+        "tenant/reports/annex_form.html",
+        {"form": form, "report": report, "mode": "edit", "annex": annex},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_annex_remove(request: HttpRequest, report_id: str, annex_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    annex = get_object_or_404(report.annexes, pk=annex_id)
+    annex.delete()
+    messages.success(request, "Annex removed.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_annex_move(
+    request: HttpRequest,
+    report_id: str,
+    annex_id: str,
+    direction: str,
+) -> HttpResponse:
+    """Swap an annex's order with its neighbour (up/down) to reorder."""
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    ordered = list(report.annexes.order_by("order", "title"))
+    idx = next((i for i, a in enumerate(ordered) if str(a.pk) == str(annex_id)), None)
+    if idx is None:
+        raise Http404
+    swap = idx - 1 if direction == "up" else idx + 1
+    if 0 <= swap < len(ordered):
+        a, b = ordered[idx], ordered[swap]
+        a.order, b.order = b.order, a.order
+        # Guard against equal/zero order values producing no change.
+        if a.order == b.order:
+            a.order, b.order = swap, idx
+        Annex.objects.bulk_update([a, b], ["order"])
+    return redirect("reports:detail", report_id=report.id)

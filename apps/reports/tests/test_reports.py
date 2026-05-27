@@ -8,7 +8,7 @@ import pytest
 
 from apps.accounts.models import Role, User
 from apps.findings.models import Channel, Finding
-from apps.reports.models import PointOfContact, Report, ScopeCategory
+from apps.reports.models import Annex, PointOfContact, Report, ScopeCategory
 from apps.vendors.models import Vendor
 
 if TYPE_CHECKING:
@@ -244,3 +244,67 @@ def test_remove_finding_unlinks_but_keeps_it(client: Client) -> None:
     assert resp.status_code == 302
     assert not report.findings.filter(pk=finding.pk).exists()
     assert Finding.objects.filter(pk=finding.pk).exists()  # not deleted
+
+
+# ---- Phase 4c: content + annexes ----------------------------------------
+
+
+@pytest.mark.django_db
+def test_edit_content(client: Client) -> None:
+    user = _user("ct@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    client.force_login(user)
+    resp = client.post(
+        f"/reports/{report.id}/content/",
+        data={"executive_summary": "## Summary\n\nText.", "conclusion": "Done."},
+    )
+    assert resp.status_code == 302
+    report.refresh_from_db()
+    assert "Summary" in report.executive_summary
+    assert report.conclusion == "Done."
+
+
+@pytest.mark.django_db
+def test_annex_add_and_render_with_letters(client: Client) -> None:
+    user = _user("an@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    client.force_login(user)
+    client.post(f"/reports/{report.id}/annexes/new/", data={"title": "Methodology", "body": "m"})
+    client.post(f"/reports/{report.id}/annexes/new/", data={"title": "Tooling", "body": "t"})
+    assert Annex.objects.filter(report=report).count() == 2
+    body = client.get(f"/reports/{report.id}/").content.decode()
+    assert "Annex A — Methodology" in body
+    assert "Annex B — Tooling" in body
+
+
+@pytest.mark.django_db
+def test_annex_move_reorders(client: Client) -> None:
+    user = _user("mv@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    a = Annex.objects.create(report=report, title="A", body="", order=0)
+    b = Annex.objects.create(report=report, title="B", body="", order=1)
+    client.force_login(user)
+    client.post(f"/reports/{report.id}/annexes/{b.id}/move/up/")
+    a.refresh_from_db()
+    b.refresh_from_db()
+    assert b.order < a.order  # B moved above A
+
+
+@pytest.mark.django_db
+def test_annex_remove(client: Client) -> None:
+    user = _user("ar@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    annex = Annex.objects.create(report=report, title="X", body="", order=0)
+    client.force_login(user)
+    resp = client.post(f"/reports/{report.id}/annexes/{annex.id}/remove/")
+    assert resp.status_code == 302
+    assert not Annex.objects.filter(pk=annex.pk).exists()
+
+
+@pytest.mark.django_db
+def test_outsider_cannot_edit_content(client: Client) -> None:
+    creator = _user("co@example.com")
+    outsider = _user("oz@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=creator)
+    client.force_login(outsider)
+    assert client.get(f"/reports/{report.id}/content/").status_code == 404
