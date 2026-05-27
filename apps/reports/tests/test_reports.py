@@ -348,13 +348,15 @@ def test_autosave_rejects_field_not_in_allowlist(client: Client) -> None:
     finding = _finding(report.client, user)
     report.findings.add(finding)
     client.force_login(user)
-    # status is NOT in the finding allowlist → rejected before any write.
+    # review_state is NOT in the finding allowlist → rejected before any write.
     resp = _post_json(
         client,
         f"/reports/{report.id}/autosave/",
         {"model": "finding", "pk": str(finding.id), "field": "review_state", "value": "rejected"},
     )
     assert resp.status_code == 400
+    finding.refresh_from_db()
+    assert finding.review_state != "rejected"  # autosave did not touch it
 
 
 @pytest.mark.django_db
@@ -386,3 +388,94 @@ def test_autosave_outsider_404(client: Client) -> None:
         {"model": "report", "pk": str(report.id), "field": "conclusion", "value": "x"},
     )
     assert resp.status_code == 404
+
+
+# ---- Phase 4d: report review workflow + visibility ----------------------
+
+
+@pytest.mark.django_db
+def test_submit_approve_flow(client: Client) -> None:
+    creator = _user("rc@example.com")  # involved, not a reviewer
+    reviewer = _user("rv@example.com", role=Role.SUPERADMIN.value)
+    report = Report.objects.create(name="R", client=_vendor(), created_by=creator)
+    # creator submits
+    client.force_login(creator)
+    client.post(f"/reports/{report.id}/review/submit/")
+    report.refresh_from_db()
+    assert report.status == "in_review"
+    # reviewer approves
+    client.force_login(reviewer)
+    client.post(f"/reports/{report.id}/review/approve/")
+    report.refresh_from_db()
+    assert report.status == "approved"
+    assert report.is_approved
+
+
+@pytest.mark.django_db
+def test_non_reviewer_cannot_approve(client: Client) -> None:
+    creator = _user("nra@example.com")
+    report = Report.objects.create(
+        name="R", client=_vendor(), created_by=creator, status="in_review"
+    )
+    client.force_login(creator)  # involved but not a review authority
+    resp = client.post(f"/reports/{report.id}/review/approve/")
+    assert resp.status_code == 404
+    report.refresh_from_db()
+    assert report.status == "in_review"
+
+
+@pytest.mark.django_db
+def test_reviewer_cannot_approve_own_report(client: Client) -> None:
+    """2-person flavour: a reviewer can't approve the report they created."""
+    reviewer = _user("self@example.com", role=Role.SUPERADMIN.value)
+    # Make a non-superadmin reviewer to test the own-report guard cleanly.
+    reviewer.role = Role.REGULAR.value
+    reviewer.is_reviewer = True
+    reviewer.save()
+    report = Report.objects.create(
+        name="R", client=_vendor(), created_by=reviewer, status="in_review"
+    )
+    client.force_login(reviewer)
+    resp = client.post(f"/reports/{report.id}/review/approve/")
+    assert resp.status_code == 404  # can_user_review False for own report
+
+
+@pytest.mark.django_db
+def test_non_approved_report_hidden_from_outsider(client: Client) -> None:
+    creator = _user("vo@example.com")
+    outsider = _user("vx@example.com")
+    report = Report.objects.create(
+        name="Secret", client=_vendor(), created_by=creator, status="draft"
+    )
+    client.force_login(outsider)
+    assert client.get(f"/reports/{report.id}/").status_code == 404  # not approved → hidden
+    assert "Secret" not in client.get("/reports/").content.decode()
+
+
+@pytest.mark.django_db
+def test_approved_report_visible_to_anyone(client: Client) -> None:
+    creator = _user("ao2@example.com")
+    outsider = _user("ax2@example.com")
+    report = Report.objects.create(
+        name="Public", client=_vendor(), created_by=creator, status="approved"
+    )
+    client.force_login(outsider)
+    assert client.get(f"/reports/{report.id}/").status_code == 200
+    assert "Public" in client.get("/reports/").content.decode()
+
+
+@pytest.mark.django_db
+def test_review_note_visible_to_involved_only(client: Client) -> None:
+    creator = _user("rn@example.com")
+    outsider = _user("rno@example.com")
+    report = Report.objects.create(
+        name="R", client=_vendor(), created_by=creator, status="in_review"
+    )
+    client.force_login(creator)
+    client.post(f"/reports/{report.id}/review/note/", data={"body": "private feedback"})
+    from apps.reports.models import ReportReviewNote  # noqa: PLC0415
+
+    assert ReportReviewNote.objects.filter(report=report).count() == 1
+    # outsider can't even view the report (not approved) → 404, no note leak
+    client.force_login(outsider)
+    assert client.get(f"/reports/{report.id}/").status_code == 404

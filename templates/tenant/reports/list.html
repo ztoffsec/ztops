@@ -32,7 +32,7 @@
         <td data-label="Report"><a href="{% url 'reports:detail' r.id %}">{{ r.name }}</a></td>
         <td data-label="Client">{{ r.client.name }}</td>
         <td data-label="Manager">{{ r.engagement_manager.display_name|default:"—" }}</td>
-        <td data-label="Status"><span class="pill">{{ r.get_status_display }}</span></td>
+        <td data-label="Status"><span class="pill review-{{ r.status }}">{{ r.get_status_display }}</span></td>
         <td data-label="Dates" class="subtle">
           {{ r.engagement_start|date:"Y-m-d"|default:"—" }} → {{ r.engagement_end|date:"Y-m-d"|default:"—" }}
         </td>

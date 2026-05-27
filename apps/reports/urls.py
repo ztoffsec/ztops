@@ -15,6 +15,12 @@ urlpatterns = [
     path("<uuid:report_id>/edit/", views.report_edit, name="edit"),
     path("<uuid:report_id>/content/", views.report_content_edit, name="content_edit"),
     path("<uuid:report_id>/autosave/", views.report_autosave, name="autosave"),
+    # Review workflow
+    path("<uuid:report_id>/review/submit/", views.report_submit_review, name="submit_review"),
+    path("<uuid:report_id>/review/approve/", views.report_approve, name="approve"),
+    path("<uuid:report_id>/review/reject/", views.report_reject, name="reject"),
+    path("<uuid:report_id>/review/reopen/", views.report_reopen, name="reopen"),
+    path("<uuid:report_id>/review/note/", views.report_review_note_add, name="review_note_add"),
     path("<uuid:report_id>/annexes/new/", views.report_annex_new, name="annex_new"),
     path(
         "<uuid:report_id>/annexes/<uuid:annex_id>/edit/", views.report_annex_edit, name="annex_edit"
