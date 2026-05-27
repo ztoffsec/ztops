@@ -8,10 +8,12 @@
   <p class="meta"><a href="{% url 'reports:detail' report.id %}">&larr; {{ report.name }}</a></p>
   <h1>{% if mode == "edit" %}Edit annex{% else %}New annex{% endif %}</h1>
 
+  {% if mode == "edit" %}<p class="meta">Changes autosave as you type. <span data-autosave-status class="subtle"></span></p>{% endif %}
   {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
 
   {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
-  <form method="post">
+  <form method="post"
+        {% if mode == "edit" %}data-autosave-url="{% url 'reports:autosave' report.id %}" data-autosave-pk="{{ annex.id }}" data-autosave-model="annex" data-autosave-fields="title,body"{% endif %}>
     {% csrf_token %}
     <div class="field">
       <label for="{{ form.title.id_for_label }}">Title</label>
@@ -36,4 +38,5 @@
 
 {% block scripts %}
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script src="{% static 'js/report_autosave.js' %}"></script>
 {% endblock %}

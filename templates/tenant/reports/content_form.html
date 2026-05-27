@@ -7,11 +7,16 @@
 <div class="card">
   <p class="meta"><a href="{% url 'reports:detail' report.id %}">&larr; {{ report.name }}</a></p>
   <h1>Executive summary &amp; conclusion</h1>
+  <p class="meta">Changes autosave as you type. <span data-autosave-status class="subtle"></span></p>
 
   {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
 
   {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
-  <form method="post">
+  <form method="post"
+        data-autosave-url="{% url 'reports:autosave' report.id %}"
+        data-autosave-pk="{{ report.id }}"
+        data-autosave-model="report"
+        data-autosave-fields="executive_summary,conclusion">
     {% csrf_token %}
     <div class="field">
       <label for="{{ form.executive_summary.id_for_label }}">Executive summary (markdown)</label>
@@ -43,4 +48,5 @@
 
 {% block scripts %}
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script src="{% static 'js/report_autosave.js' %}"></script>
 {% endblock %}

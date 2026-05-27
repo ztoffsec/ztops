@@ -308,3 +308,81 @@ def test_outsider_cannot_edit_content(client: Client) -> None:
     report = Report.objects.create(name="R", client=_vendor(), created_by=creator)
     client.force_login(outsider)
     assert client.get(f"/reports/{report.id}/content/").status_code == 404
+
+
+# ---- autosave (server-side draft) ---------------------------------------
+
+
+def _post_json(client: Client, url: str, payload: dict):  # noqa: ANN202
+    import json as _json  # noqa: PLC0415
+
+    return client.post(url, data=_json.dumps(payload), content_type="application/json")
+
+
+@pytest.mark.django_db
+def test_autosave_report_field(client: Client) -> None:
+    user = _user("as@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    client.force_login(user)
+    resp = _post_json(
+        client,
+        f"/reports/{report.id}/autosave/",
+        {
+            "model": "report",
+            "pk": str(report.id),
+            "field": "executive_summary",
+            "value": "draft text",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    report.refresh_from_db()
+    assert report.executive_summary == "draft text"
+
+
+@pytest.mark.django_db
+def test_autosave_rejects_field_not_in_allowlist(client: Client) -> None:
+    """Security: autosave must not be able to write arbitrary model fields."""
+    user = _user("ag@example.com", role=Role.SUPERADMIN.value)
+    report = Report.objects.create(name="R", client=_vendor(), created_by=user)
+    finding = _finding(report.client, user)
+    report.findings.add(finding)
+    client.force_login(user)
+    # status is NOT in the finding allowlist → rejected before any write.
+    resp = _post_json(
+        client,
+        f"/reports/{report.id}/autosave/",
+        {"model": "finding", "pk": str(finding.id), "field": "review_state", "value": "rejected"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_autosave_rejects_object_from_another_report(client: Client) -> None:
+    user = _user("ao@example.com")
+    vendor = _vendor()
+    r1 = Report.objects.create(name="R1", client=vendor, created_by=user)
+    r2 = Report.objects.create(name="R2", client=vendor, created_by=user)
+    annex = Annex.objects.create(report=r2, title="A", body="", order=0)
+    client.force_login(user)
+    # Try to autosave r2's annex via r1's endpoint → 404 (membership check).
+    resp = _post_json(
+        client,
+        f"/reports/{r1.id}/autosave/",
+        {"model": "annex", "pk": str(annex.id), "field": "body", "value": "x"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_autosave_outsider_404(client: Client) -> None:
+    creator = _user("acr@example.com")
+    outsider = _user("aou@example.com")
+    report = Report.objects.create(name="R", client=_vendor(), created_by=creator)
+    client.force_login(outsider)
+    resp = _post_json(
+        client,
+        f"/reports/{report.id}/autosave/",
+        {"model": "report", "pk": str(report.id), "field": "conclusion", "value": "x"},
+    )
+    assert resp.status_code == 404
