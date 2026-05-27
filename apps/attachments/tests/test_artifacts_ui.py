@@ -19,20 +19,6 @@ if TYPE_CHECKING:
     from django.test import Client
 
 
-@pytest.fixture()
-def attachments_root(tmp_path: Path) -> Path:
-    """Isolate the on-disk store per test."""
-    root = tmp_path / "attachments"
-    root.mkdir()
-    return root
-
-
-@pytest.fixture()
-def settings_root(attachments_root: Path):  # noqa: ANN201
-    with override_settings(ATTACHMENTS_ROOT=str(attachments_root)):
-        yield attachments_root
-
-
 def _user(email: str, role: str = Role.REGULAR.value) -> User:
     return User.objects.create_user(email=email, display_name=email[:6], role=role)
 

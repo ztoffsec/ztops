@@ -19,18 +19,23 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.views.decorators.csrf import csrf_protect
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_safe
 
 from apps.findings.models import Finding
 
+from .images import ImageRejected, reencode_image
 from .models import Attachment, ScanStatus
-from .storage import delete_blob, hash_and_store, path_for, safe_display_name
+from .storage import delete_blob, hash_and_store, path_for, safe_display_name, store_bytes
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
+
+# Inline image serving is restricted to the raster types reencode_image emits.
+_INLINE_IMAGE_TYPES = frozenset({"image/png", "image/jpeg"})
 
 
 def _can_delete(att: Attachment, user: object) -> bool:
@@ -90,6 +95,74 @@ def upload(request: HttpRequest, finding_id: str) -> HttpResponse:
         mib = limit // (1024 * 1024)
         messages.error(request, f"Skipped (over {mib} MiB): {', '.join(too_big)}.")
     return redirect(f"/findings/{finding.id}/?tab=artifacts")
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def upload_image(request: HttpRequest, finding_id: str) -> JsonResponse:
+    """Re-encode a pasted/dropped image and attach it as an inline image.
+
+    Returns JSON {url, filename} for the markdown editor to embed. The bytes
+    are re-encoded server-side (apps.attachments.images) so a polyglot or
+    SVG-with-script can never reach the inline serve endpoint.
+    """
+    finding = get_object_or_404(Finding, pk=finding_id)
+    if not finding.can_user_edit(request.user):
+        raise Http404
+
+    upload_file = request.FILES.get("image")
+    if not upload_file:
+        return JsonResponse({"error": "no_file"}, status=400)
+    if upload_file.size > settings.ATTACHMENTS_MAX_SIZE:
+        return JsonResponse({"error": "too_large"}, status=400)
+
+    try:
+        clean, content_type, ext = reencode_image(upload_file.read())
+    except ImageRejected:
+        return JsonResponse({"error": "not_an_image"}, status=400)
+
+    sha256, _path, size = store_bytes(clean, str(finding.id))
+    att = Attachment.objects.filter(finding=finding, sha256_hash=sha256).first()
+    if att is None:
+        att = Attachment.objects.create(
+            finding=finding,
+            filename=f"image-{sha256[:8]}.{ext}",
+            content_type=content_type,
+            size_bytes=size,
+            sha256_hash=sha256,
+            storage_path=str(path_for(str(finding.id), sha256)),
+            uploaded_by=request.user,
+            uploaded_by_email=request.user.email,
+            is_inline_image=True,
+            scan_status=ScanStatus.SKIPPED,
+        )
+    url = reverse("attachments:image", args=[str(finding.id), str(att.id)])
+    return JsonResponse({"url": url, "filename": att.filename})
+
+
+@login_required(login_url="/super/login/")
+@require_safe
+def serve_image(request: HttpRequest, finding_id: str, attachment_id: str) -> HttpResponse:
+    """Serve a re-encoded inline image with its image/* content type.
+
+    Hard refuses anything that is not a re-encoded inline image, so the
+    download hardening (octet-stream + attachment for every other artifact)
+    is never bypassed. Same visibility gate as the finding (ZT-001).
+    """
+    att = get_object_or_404(Attachment, pk=attachment_id, finding_id=finding_id)
+    if not att.is_inline_image or att.content_type not in _INLINE_IMAGE_TYPES:
+        raise Http404
+    if not att.finding.can_user_view(request.user):
+        raise Http404
+    target = path_for(str(att.finding_id), att.sha256_hash)
+    if not target.exists():
+        raise Http404
+    response = FileResponse(target.open("rb"), content_type=att.content_type)
+    # Inline (not attachment) so it renders; nosniff pins the declared type.
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Disposition"] = "inline"
+    return response
 
 
 @login_required(login_url="/super/login/")

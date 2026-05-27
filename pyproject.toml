@@ -26,6 +26,10 @@ dependencies = [
     "bleach>=6.1,<7.0",
     "markdown-it-py>=3.0,<4.0",
     "pygments>=2.18,<3.0",
+    # Re-encodes embedded images server-side to strip polyglots/EXIF/SVG-script
+    # before they are served inline (apps.attachments.images). Floor 12.2.0
+    # fixes CVE-2026-42308..42311 (we feed it user-uploaded images).
+    "pillow>=12.2,<13.0",
     "gunicorn>=23.0,<24.0",
     "uvicorn[standard]>=0.32,<0.40",
     "python-dotenv>=1.0,<2.0",

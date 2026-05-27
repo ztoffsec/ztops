@@ -81,6 +81,7 @@ ALLOWED_TAGS: frozenset[str] = frozenset(
         "ol",
         "li",
         "a",
+        "img",
         "table",
         "thead",
         "tbody",
@@ -92,6 +93,10 @@ ALLOWED_TAGS: frozenset[str] = frozenset(
 
 ALLOWED_ATTRIBUTES: dict[str, list[str]] = {
     "a": ["href", "title", "rel"],
+    # Markdown ![alt](src) only. No event-handler attrs survive bleach, and
+    # CSP img-src 'self' (default-src 'self') blocks loading any off-origin
+    # src in the browser, so embedded images can only be our re-encoded ones.
+    "img": ["src", "alt", "title"],
     "code": ["class"],
     "pre": ["class"],
     # Pygments token spans only need `class`; nothing else gets through.
