@@ -189,14 +189,6 @@ class Finding(models.Model):
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
-    engagement = models.ForeignKey(
-        "engagements.Engagement",
-        on_delete=models.PROTECT,
-        related_name="findings",
-        null=True,
-        blank=True,
-    )
-
     # Structured finding body. narrative = what/impact, poc = reproduction,
     # remediation = fix guidance. All markdown, rendered via render_markdown.
     narrative = models.TextField(blank=True)

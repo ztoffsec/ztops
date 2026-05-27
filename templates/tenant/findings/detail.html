@@ -420,7 +420,6 @@
         <tr><th>CVE ID</th><td class="mono">{{ finding.cve_id|default:"—" }}</td></tr>
         <tr><th>CVSS 3.1</th><td>{% if finding.cvss_31_score %}{{ finding.cvss_31_score }} &middot; <span class="mono">{{ finding.cvss_31_vector|default:"" }}</span>{% else %}—{% endif %}</td></tr>
         <tr><th>CVSS 4.0</th><td>{% if finding.cvss_4_score %}{{ finding.cvss_4_score }} &middot; <span class="mono">{{ finding.cvss_4_vector|default:"" }}</span>{% else %}—{% endif %}</td></tr>
-        <tr><th>Engagement</th><td>{% if finding.engagement %}{{ finding.engagement.name }}{% else %}—{% endif %}</td></tr>
         <tr><th>CWE</th><td class="mono">{{ finding.cwe_ids|join:", "|default:"—" }}</td></tr>
         <tr><th>Created</th><td>{{ finding.created_at|date:"Y-m-d H:i" }} UTC</td></tr>
         <tr><th>Updated</th><td>{{ finding.updated_at|date:"Y-m-d H:i" }} UTC</td></tr>

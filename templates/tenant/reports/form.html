@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "create" %}New report{% else %}Edit {{ report.name }}{% endif %} — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .poc-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; margin-bottom: 0.5rem; }
+  .poc-row .field { margin-bottom: 0; }
+  .poc-row.removed { display: none; }
+  .poc-row .delete-cell input { display: none; }  /* hidden DELETE; the button drives it */
+  .poc-row .poc-remove { white-space: nowrap; }
+  .scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.25rem 1rem; }
+  .scope-grid label { font-weight: 400; display: flex; gap: 0.5rem; align-items: center; }
+  /* Scroll the people pickers so a large team doesn't make a giant list. */
+  .check-scroll {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+  }
+  @media (max-width: 720px) { .poc-row { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>{% if mode == "create" %}New report{% else %}Edit {{ report.name }}{% endif %}</h1>
+
+  {% if form.errors or formset.errors %}
+  <div class="status error">Form has errors. Fix the highlighted fields below.</div>
+  {% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="field">
+      <label for="{{ form.name.id_for_label }}">Report name</label>
+      {{ form.name }}{{ form.name.errors }}
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.client.id_for_label }}">Client / vendor</label>
+        {{ form.client }}{{ form.client.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.engagement_manager.id_for_label }}">Engagement manager</label>
+        {{ form.engagement_manager }}{{ form.engagement_manager.errors }}
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Researchers involved <span class="subtle">(select one or more)</span></label>
+      <div class="check-scroll scope-grid">{{ form.researchers }}</div>
+      {{ form.researchers.errors }}
+    </div>
+
+    <div class="field">
+      <label>Engagement type / scope <span class="subtle">(select one or more)</span></label>
+      <div class="scope-grid">{{ form.scope_categories }}</div>
+      {{ form.scope_categories.errors }}
+    </div>
+
+    <div class="field-grid">
+      <div class="field">
+        <label for="{{ form.engagement_start.id_for_label }}">Engagement start</label>
+        {{ form.engagement_start }}{{ form.engagement_start.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.engagement_end.id_for_label }}">Engagement end</label>
+        {{ form.engagement_end }}{{ form.engagement_end.errors }}
+      </div>
+    </div>
+
+    <h2 style="margin-top: 1.5rem">Client points of contact</h2>
+    <p class="meta">Add one or more. Use “Add contact” for additional people.</p>
+    {{ formset.management_form }}
+    <div id="poc-forms">
+      {% for poc in formset %}
+      <div class="poc-row">
+        {% for hidden in poc.hidden_fields %}{{ hidden }}{% endfor %}
+        <div class="field"><label>Name</label>{{ poc.name }}</div>
+        <div class="field"><label>Role</label>{{ poc.role }}</div>
+        <div class="field"><label>Email</label>{{ poc.email }}</div>
+        <div class="field"><label>Phone</label>{{ poc.phone }}</div>
+        <div class="field delete-cell">
+          <label>&nbsp;</label>
+          {{ poc.DELETE }}
+          <button type="button" class="btn btn-remove poc-remove">Remove</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-secondary" id="add-poc">+ Add contact</button>
+
+    <div style="margin-top: 1.25rem">
+      <button type="submit">{% if mode == "create" %}Create report{% else %}Save changes{% endif %}</button>
+      {% if mode == "edit" %}<a href="{% url 'reports:detail' report.id %}" class="btn btn-secondary">Cancel</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ request.csp_nonce }}">
+  // Clone the last (empty) point-of-contact row and bump the formset count.
+  (function () {
+    var addBtn = document.getElementById("add-poc");
+    var container = document.getElementById("poc-forms");
+    var total = document.getElementById("id_contacts-TOTAL_FORMS");
+    if (!addBtn || !container || !total) return;
+    addBtn.addEventListener("click", function () {
+      var n = parseInt(total.value, 10);
+      var rows = container.querySelectorAll(".poc-row");
+      var clone = rows[rows.length - 1].cloneNode(true);
+      clone.querySelectorAll("input, select, label").forEach(function (el) {
+        ["name", "id", "for"].forEach(function (attr) {
+          var v = el.getAttribute(attr);
+          if (v) el.setAttribute(attr, v.replace(/contacts-\d+-/, "contacts-" + n + "-"));
+        });
+        if (el.tagName === "INPUT") {
+          if (el.type === "checkbox") el.checked = false; else el.value = "";
+        } else if (el.tagName === "SELECT") {
+          el.selectedIndex = 0;
+        }
+      });
+      container.appendChild(clone);
+      total.value = n + 1;
+    });
+
+    // Remove a contact row: check its (hidden) DELETE so saved rows are
+    // deleted on submit and new rows are dropped; hide the row from view.
+    container.addEventListener("click", function (e) {
+      if (!e.target.classList.contains("poc-remove")) return;
+      var row = e.target.closest(".poc-row");
+      var del = row.querySelector('.delete-cell input[type="checkbox"]');
+      if (del) {
+        del.checked = true;
+        row.classList.add("removed");
+      } else {
+        row.remove();
+      }
+    });
+  })();
+</script>
+{% endblock %}
