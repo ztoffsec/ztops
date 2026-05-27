@@ -13,6 +13,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
+from apps.audit.models import AuditAction
+from apps.audit.services import audit
 from apps.findings.markdown import render_markdown
 from apps.findings.models import Finding, ReviewState
 from apps.findings.views import _sync_affected_hosts
@@ -24,7 +26,7 @@ from .forms import (
     ReportFindingForm,
     ReportForm,
 )
-from .models import Annex, Report
+from .models import Annex, Report, ReportReviewNote, ReportStatus
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -32,12 +34,20 @@ if TYPE_CHECKING:
 
 @login_required(login_url="/super/login/")
 def reports_list(request: HttpRequest) -> HttpResponse:
-    reports = list(
-        Report.objects.select_related("client", "engagement_manager")
-        .prefetch_related("scope_categories")
-        .all(),
+    qs = Report.objects.select_related("client", "engagement_manager").prefetch_related(
+        "scope_categories",
     )
-    return render(request, "tenant/reports/list.html", {"reports": reports})
+    # Non-reviewers see approved reports + the ones they are involved in.
+    if not request.user.is_review_authority:
+        from django.db.models import Q  # noqa: PLC0415
+
+        qs = qs.filter(
+            Q(status=ReportStatus.APPROVED.value)
+            | Q(created_by=request.user)
+            | Q(engagement_manager=request.user)
+            | Q(researchers=request.user),
+        ).distinct()
+    return render(request, "tenant/reports/list.html", {"reports": list(qs)})
 
 
 @login_required(login_url="/super/login/")
@@ -73,6 +83,9 @@ def report_detail(request: HttpRequest, report_id: str) -> HttpResponse:
         ).prefetch_related("researchers", "scope_categories", "contacts", "findings"),
         pk=report_id,
     )
+    # Visibility gate: non-approved reports are involved-parties + reviewers only.
+    if not report.can_user_view(request.user):
+        raise Http404
     report_findings = list(
         report.findings.select_related("vendor").order_by("-created_at"),
     )
@@ -104,6 +117,16 @@ def report_detail(request: HttpRequest, report_id: str) -> HttpResponse:
             "executive_summary_html": render_markdown(report.executive_summary),
             "conclusion_html": render_markdown(report.conclusion),
             "annexes": annexes,
+            "can_review": report.can_user_review(request.user),
+            "can_view_review_notes": report.can_user_view_review_notes(request.user),
+            "review_notes_rendered": (
+                [
+                    {"note": n, "body_html": render_markdown(n.body)}
+                    for n in report.review_notes.select_related("author").order_by("created_at")
+                ]
+                if report.can_user_view_review_notes(request.user)
+                else []
+            ),
         },
     )
 
@@ -421,3 +444,146 @@ def report_autosave(request: HttpRequest, report_id: str) -> JsonResponse:
 
     target.update(**{field: value})
     return JsonResponse({"ok": True, "saved_at": timezone.now().strftime("%H:%M:%S")})
+
+
+# ---- Report review workflow (mirrors findings) --------------------------
+
+
+def _set_report_state(
+    request: HttpRequest,
+    report: Report,
+    new_state: str,
+    action: AuditAction,
+) -> None:
+    report.status = new_state
+    report.reviewed_by = request.user
+    report.reviewed_at = timezone.now()
+    report.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+    audit(
+        action=action,
+        actor=request.user,
+        request=request,
+        target_kind="report",
+        target_id=str(report.id),
+        target_label=report.name,
+        metadata={"new_state": new_state},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_submit_review(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Submit a draft (or re-submit a rejected report) for review. Involved
+    editors only."""
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_edit(request.user):
+        raise Http404
+    if report.status not in {ReportStatus.DRAFT.value, ReportStatus.REJECTED.value}:
+        messages.error(request, "Only a draft or rejected report can be submitted for review.")
+        return redirect("reports:detail", report_id=report.id)
+    was_rejected = report.status == ReportStatus.REJECTED.value
+    _set_report_state(
+        request,
+        report,
+        ReportStatus.IN_REVIEW.value,
+        AuditAction.REVIEW_RESUBMITTED if was_rejected else AuditAction.REVIEW_STARTED,
+    )
+    messages.success(request, "Report submitted for review.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_approve(request: HttpRequest, report_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_review(request.user):
+        raise Http404
+    if report.status != ReportStatus.IN_REVIEW.value:
+        messages.error(request, "Only a report in review can be approved.")
+        return redirect("reports:detail", report_id=report.id)
+    _set_report_state(request, report, ReportStatus.APPROVED.value, AuditAction.REVIEW_APPROVED)
+    messages.success(request, "Report approved — now visible to everyone and exportable.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_reject(request: HttpRequest, report_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_review(request.user):
+        raise Http404
+    if report.status != ReportStatus.IN_REVIEW.value:
+        messages.error(request, "Only a report in review can be rejected.")
+        return redirect("reports:detail", report_id=report.id)
+    _set_report_state(request, report, ReportStatus.REJECTED.value, AuditAction.REVIEW_REJECTED)
+    messages.success(request, "Report rejected.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_reopen(request: HttpRequest, report_id: str) -> HttpResponse:
+    """Re-open an approved report for review. Superadmin only."""
+    report = get_object_or_404(Report, pk=report_id)
+    if not request.user.is_superadmin:
+        raise Http404
+    if report.status != ReportStatus.APPROVED.value:
+        messages.error(request, "Only an approved report can be re-opened.")
+        return redirect("reports:detail", report_id=report.id)
+    _set_report_state(request, report, ReportStatus.IN_REVIEW.value, AuditAction.REVIEW_STARTED)
+    messages.success(request, "Report re-opened for review.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def report_review_note_add(request: HttpRequest, report_id: str) -> HttpResponse:
+    report = get_object_or_404(Report, pk=report_id)
+    if not report.can_user_view_review_notes(request.user):
+        raise Http404
+    body = (request.POST.get("body") or "").strip()
+    if not body:
+        messages.error(request, "Note body is empty.")
+        return redirect("reports:detail", report_id=report.id)
+    ReportReviewNote.objects.create(
+        report=report,
+        author=request.user,
+        author_email=request.user.email,
+        author_is_reviewer=report.can_user_review(request.user),
+        body=body[:200_000],
+    )
+    messages.success(request, "Review note added.")
+    return redirect("reports:detail", report_id=report.id)
+
+
+@login_required(login_url="/super/login/")
+def report_reviews_queue(request: HttpRequest) -> HttpResponse:
+    """Report-review queue (the 'Report reviews' sub-tab). Review authority
+    sees all; others see the reports they are involved in that are in review."""
+    open_qs = Report.objects.filter(status=ReportStatus.IN_REVIEW.value).select_related(
+        "client",
+        "created_by",
+    )
+    closed_qs = Report.objects.filter(
+        status__in=[ReportStatus.APPROVED.value, ReportStatus.REJECTED.value],
+    ).select_related("client", "reviewed_by")[:25]
+    if not request.user.is_review_authority:
+        from django.db.models import Q  # noqa: PLC0415
+
+        involved = (
+            Q(created_by=request.user)
+            | Q(engagement_manager=request.user)
+            | Q(researchers=request.user)
+        )
+        open_qs = open_qs.filter(involved).distinct()
+        closed_qs = closed_qs.filter(involved).distinct()
+    return render(
+        request,
+        "tenant/reports/review_queue.html",
+        {"open_reports": list(open_qs), "closed_reports": list(closed_qs)},
+    )

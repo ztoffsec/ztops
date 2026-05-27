@@ -41,9 +41,17 @@ class ScopeCategory(models.Model):
 
 
 class ReportStatus(models.TextChoices):
+    """Review lifecycle (mirrors the finding review gate).
+
+    A report is built in DRAFT, submitted for review (IN_REVIEW), then
+    APPROVED or REJECTED by a reviewer. Only APPROVED reports are publicly
+    visible and exportable; everything else is involved-parties only.
+    """
+
     DRAFT = "draft", "Draft"
     IN_REVIEW = "in_review", "In Review"
-    FINAL = "final", "Final"
+    APPROVED = "approved", "Approved"
+    REJECTED = "rejected", "Rejected"
 
 
 class Report(models.Model):
@@ -90,6 +98,15 @@ class Report(models.Model):
     executive_summary = models.TextField(blank=True)
     conclusion = models.TextField(blank=True)
 
+    reviewed_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        related_name="reports_reviewed",
+        null=True,
+        blank=True,
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         "accounts.User",
         on_delete=models.SET_NULL,
@@ -106,16 +123,57 @@ class Report(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    @property
+    def is_approved(self) -> bool:
+        return self.status == ReportStatus.APPROVED.value
+
+    def _is_involved(self, user: object) -> bool:
+        """Directly involved parties: creator, engagement manager, researchers."""
+        if user.pk in {self.created_by_id, self.engagement_manager_id}:
+            return True
+        return self.researchers.filter(pk=user.pk).exists()
+
     def can_user_edit(self, user: object) -> bool:
-        """Creator, assigned researchers, the engagement manager, and
+        """Involved parties (creator / researchers / engagement manager) and
         superadmins may edit a report."""
         if not getattr(user, "is_authenticated", False):
             return False
         if getattr(user, "is_superadmin", False):
             return True
-        if user.pk in {self.created_by_id, self.engagement_manager_id}:
+        return self._is_involved(user)
+
+    def can_user_view(self, user: object) -> bool:
+        """Approved reports are visible to anyone authenticated. Non-approved
+        reports (draft / in_review / rejected) are visible only to the involved
+        parties and to review authorities (so they can review them)."""
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if self.is_approved:
             return True
-        return self.researchers.filter(pk=user.pk).exists()
+        if getattr(user, "is_review_authority", False):
+            return True
+        return self._is_involved(user)
+
+    def can_user_export(self, user: object) -> bool:
+        """Export is allowed only once APPROVED, to anyone who can view it."""
+        return self.is_approved and self.can_user_view(user)
+
+    def can_user_review(self, user: object) -> bool:
+        """Reviewers + superadmins move the review state. A reviewer cannot
+        approve a report they created (2-person flavour); superadmin override."""
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if not getattr(user, "is_review_authority", False):
+            return False
+        return self.created_by_id != user.pk or getattr(user, "is_superadmin", False)
+
+    def can_user_view_review_notes(self, user: object) -> bool:
+        """Private review thread: involved parties + reviewers/superadmins."""
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "is_review_authority", False):
+            return True
+        return self._is_involved(user)
 
 
 class PointOfContactRole(models.TextChoices):
@@ -171,3 +229,32 @@ class Annex(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class ReportReviewNote(models.Model):
+    """Private review-thread note on a report — visible to involved parties +
+    reviewers + superadmins. Distinct from the report content."""
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    report = models.ForeignKey(
+        Report,
+        on_delete=models.CASCADE,
+        related_name="review_notes",
+    )
+    author = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        related_name="report_review_notes",
+        null=True,
+        blank=True,
+    )
+    author_email = models.CharField(max_length=255, blank=True)
+    author_is_reviewer = models.BooleanField(default=False)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("created_at",)
+
+    def __str__(self) -> str:
+        return f"ReviewNote on {self.report_id} by {self.author_email or 'unknown'}"

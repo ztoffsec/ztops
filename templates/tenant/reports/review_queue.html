@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Report reviews — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Reviews</h1>
+  <div class="scope-tabs">
+    <a href="{% url 'reviews:queue' %}">Findings reviews</a>
+    <a href="{% url 'report_reviews:queue' %}" class="active">Report reviews</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>In review ({{ open_reports|length }})</h2>
+  {% if open_reports %}
+  <table class="rows table-cards">
+    <thead><tr><th>Report</th><th>Client</th><th>Created by</th><th></th></tr></thead>
+    <tbody>
+      {% for r in open_reports %}
+      <tr>
+        <td data-label="Report"><a href="{% url 'reports:detail' r.id %}">{{ r.name }}</a></td>
+        <td data-label="Client">{{ r.client.name }}</td>
+        <td data-label="Created by" class="subtle">{{ r.created_by.display_name|default:"—" }}</td>
+        <td class="actions"><a href="{% url 'reports:detail' r.id %}">Review</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="subtle">No reports awaiting review.</p>{% endif %}
+</div>
+
+{% if closed_reports %}
+<div class="card">
+  <h2>Recently decided</h2>
+  <table class="rows table-cards">
+    <thead><tr><th>Report</th><th>Client</th><th>Decision</th><th>Decided by</th></tr></thead>
+    <tbody>
+      {% for r in closed_reports %}
+      <tr>
+        <td data-label="Report"><a href="{% url 'reports:detail' r.id %}">{{ r.name }}</a></td>
+        <td data-label="Client">{{ r.client.name }}</td>
+        <td data-label="Decision"><span class="pill review-{{ r.status }}">{{ r.get_status_display }}</span></td>
+        <td data-label="Decided by" class="subtle">{{ r.reviewed_by.display_name|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

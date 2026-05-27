@@ -42,6 +42,9 @@ urlpatterns = [
     path("reports/", include("apps.reports.urls")),
     path("super/", include("apps.accounts.urls")),
     path("super/approvals/", include("apps.approvals.urls")),
+    # Report reviews sub-tab must precede the findings reviews include
+    # (which matches the bare "super/reviews/" path).
+    path("super/reviews/reports/", include("apps.reports.review_urls")),
     path("super/reviews/", include("apps.findings.reviews_urls")),
     path("super/admin/", superadmin_site.urls),
 ]

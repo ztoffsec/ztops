@@ -9,12 +9,58 @@
     <div class="titles">
       <h1>{{ report.name }}</h1>
       <p class="meta">
-        <span class="pill">{{ report.get_status_display }}</span>
+        <span class="pill review-{{ report.status }}">{{ report.get_status_display }}</span>
         <span class="pill">{{ report.classification }}</span>
       </p>
     </div>
     {% if can_edit %}<a href="{% url 'reports:edit' report.id %}" class="btn btn-secondary">Edit</a>{% endif %}
   </div>
+</div>
+
+<div class="card">
+  <h2>Review</h2>
+  <p class="meta">
+    State: <span class="pill review-{{ report.status }}">{{ report.get_status_display }}</span>
+    {% if report.reviewed_by %}· last action by {{ report.reviewed_by.display_name|default:report.reviewed_by.email }} at {{ report.reviewed_at|date:"Y-m-d H:i" }} UTC{% endif %}
+  </p>
+  {% if report.status == "approved" %}
+  <p class="subtle">Approved — visible to everyone and exportable.</p>
+  {% else %}
+  <p class="subtle">Not approved — visible only to involved parties and reviewers; export is blocked until approved.</p>
+  {% endif %}
+
+  <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem">
+    {% if can_edit and report.status == "draft" %}
+      <form method="post" action="{% url 'reports:submit_review' report.id %}" class="inline-form">{% csrf_token %}<button type="submit">Submit for review</button></form>
+    {% endif %}
+    {% if can_edit and report.status == "rejected" %}
+      <form method="post" action="{% url 'reports:submit_review' report.id %}" class="inline-form">{% csrf_token %}<button type="submit">Re-submit for review</button></form>
+    {% endif %}
+    {% if can_review and report.status == "in_review" %}
+      <form method="post" action="{% url 'reports:approve' report.id %}" class="inline-form">{% csrf_token %}<button type="submit" class="btn btn-approve">Approve</button></form>
+      <form method="post" action="{% url 'reports:reject' report.id %}" class="inline-form" data-confirm="Reject this report?">{% csrf_token %}<button type="submit" class="btn btn-remove">Reject</button></form>
+    {% endif %}
+    {% if request.user.is_superadmin and report.status == "approved" %}
+      <form method="post" action="{% url 'reports:reopen' report.id %}" class="inline-form" data-confirm="Re-open this approved report for review?">{% csrf_token %}<button type="submit" class="btn btn-remove">Re-open</button></form>
+    {% endif %}
+  </div>
+
+  {% if can_view_review_notes %}
+  <h3 style="margin-top: 1.25rem">Review notes ({{ review_notes_rendered|length }})</h3>
+  {% for row in review_notes_rendered %}
+  <div style="border-bottom: 1px solid var(--border); padding: 0.5rem 0;">
+    <p class="meta">{{ row.note.author.display_name|default:row.note.author_email|default:"system" }}{% if row.note.author_is_reviewer %} · reviewer{% endif %} · {{ row.note.created_at|date:"Y-m-d H:i" }} UTC</p>
+    <!-- nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe -->
+    <div class="markdown-body">{{ row.body_html|safe }}</div>
+  </div>
+  {% empty %}<p class="subtle">No review notes yet.</p>{% endfor %}
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post" action="{% url 'reports:review_note_add' report.id %}" style="margin-top: 0.75rem">
+    {% csrf_token %}
+    <div class="field"><textarea name="body" rows="3" placeholder="Add a private review note (markdown)…"></textarea></div>
+    <button type="submit">Post review note</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">

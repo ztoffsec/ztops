@@ -4,11 +4,15 @@
 
 {% block content %}
 <div class="card">
-  <h1>Review queue</h1>
+  <h1>Reviews</h1>
+  <div class="scope-tabs">
+    <a href="{% url 'reviews:queue' %}" class="active">Findings reviews</a>
+    <a href="{% url 'report_reviews:queue' %}">Report reviews</a>
+  </div>
   <p class="meta">
     {{ open_count }} finding{{ open_count|pluralize }} awaiting review or in
     progress. Approve to publish to the global feed; reject to keep the
-    report private to the reporter + reviewers.
+    finding private to the reporter + reviewers.
   </p>
 </div>
 

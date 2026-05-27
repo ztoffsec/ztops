@@ -383,11 +383,15 @@
   .pill.review-approved      { color: #047857; border-color: #a7f3d0; background: #d1fae5; }
   .pill.review-pending       { color: #b45309; border-color: #fde68a; background: #fef3c7; }
   .pill.review-under_review  { color: #1d4ed8; border-color: #bfdbfe; background: #dbeafe; }
+  .pill.review-in_review     { color: #1d4ed8; border-color: #bfdbfe; background: #dbeafe; }
+  .pill.review-draft         { color: #475569; border-color: #cbd5e1; background: #f1f5f9; }
   .pill.review-rejected      { color: #be123c; border-color: #fecdd3; background: #ffe4e6; }
   @media (prefers-color-scheme: dark) {
     .pill.review-approved      { color: #a7f3d0; background: #022c22; border-color: #064e3b; }
     .pill.review-pending       { color: #fde68a; background: #422006; border-color: #78350f; }
     .pill.review-under_review  { color: #bfdbfe; background: #172554; border-color: #1e3a8a; }
+    .pill.review-in_review     { color: #bfdbfe; background: #172554; border-color: #1e3a8a; }
+    .pill.review-draft         { color: #cbd5e1; background: #1e293b; border-color: #334155; }
     .pill.review-rejected      { color: #fecdd3; background: #4c0519; border-color: #881337; }
   }
 
@@ -573,6 +577,11 @@
   /* utility */
   .subtle { color: var(--text-muted); }
   .mono { font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.8125rem; }
+  /* Sub-tab nav (e.g. Reviews: Findings reviews / Report reviews). */
+  .scope-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 0 0 1rem; flex-wrap: wrap; }
+  .scope-tabs a { padding: 0.625rem 1rem; font-size: 0.875rem; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .scope-tabs a:hover { color: var(--text); text-decoration: none; }
+  .scope-tabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
   .host-list { list-style: none; padding: 0; margin: 0 0 1rem; }
   .host-list li { padding: 0.1875rem 0; border-bottom: 1px solid var(--border); word-break: break-all; }
   .host-list li:last-child { border-bottom: 0; }
