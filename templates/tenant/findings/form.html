@@ -57,11 +57,9 @@
   <div class="status error">Form has errors. Fix the highlighted fields below.</div>
   {% endif %}
 
-  <div class="field">
-    <label for="{{ form.internal_id.id_for_label }}">Internal ID</label>
-    {{ form.internal_id }}
-    {{ form.internal_id.errors }}
-  </div>
+  {% if mode == "create" %}
+  <p class="meta">A unique ID (<span class="mono">ZT-{{ "now"|date:"Y" }}-XXXXXXX</span>) is assigned automatically on save.</p>
+  {% endif %}
 
   <div class="field">
     <label for="{{ form.title.id_for_label }}">Title</label>

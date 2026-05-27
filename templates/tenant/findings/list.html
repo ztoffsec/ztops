@@ -79,11 +79,13 @@
 
 {% block content %}
 <div class="card">
-  <h1>Findings</h1>
-  <p class="meta">
-    {{ total }} finding{{ total|pluralize }} tracked.
-    <a href="{% url 'findings:new' %}">New finding</a>
-  </p>
+  <div class="page-head">
+    <div class="titles">
+      <h1>Findings</h1>
+      <p class="meta">{{ total }} finding{{ total|pluralize }} tracked.</p>
+    </div>
+    <a href="{% url 'findings:new' %}" class="btn btn-create">New finding</a>
+  </div>
 
   <div class="scope-tabs">
     <a href="?scope=mine" class="{% if scope == 'mine' %}active{% endif %}">
