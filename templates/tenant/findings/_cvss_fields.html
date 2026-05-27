@@ -1,0 +1,202 @@
+{# Shared CVSS 3.1 + 4.0 score/vector inputs and live calculators.
+   Used by the standalone finding form and the in-report finding form.
+   Requires cvss31.js + cvss40.js loaded on the page and the .cvss-calc
+   styles (defined globally in base.html). #}
+<div data-cvss31-root>
+  <div class="field-grid">
+    <div class="field">
+      <label for="{{ form.cvss_31_score.id_for_label }}">CVSS 3.1 score</label>
+      {{ form.cvss_31_score }}
+      {{ form.cvss_31_score.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.cvss_31_vector.id_for_label }}">CVSS 3.1 vector</label>
+      {{ form.cvss_31_vector }}
+      {{ form.cvss_31_vector.errors }}
+    </div>
+  </div>
+
+  <div class="cvss-calc">
+    <div class="head">
+      <span>CVSS 3.1 calculator — change a metric or paste a vector above; score updates live.</span>
+      <span>Computed: <span class="band" data-cvss31-band>—</span></span>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>Attack Vector</label>
+        <select data-cvss31-metric="AV">
+          <option value="N">Network (N)</option>
+          <option value="A">Adjacent (A)</option>
+          <option value="L">Local (L)</option>
+          <option value="P">Physical (P)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Attack Complexity</label>
+        <select data-cvss31-metric="AC">
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Privileges Required</label>
+        <select data-cvss31-metric="PR">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>User Interaction</label>
+        <select data-cvss31-metric="UI">
+          <option value="N">None (N)</option>
+          <option value="R">Required (R)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Scope</label>
+        <select data-cvss31-metric="S">
+          <option value="U">Unchanged (U)</option>
+          <option value="C">Changed (C)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Confidentiality</label>
+        <select data-cvss31-metric="C">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Integrity</label>
+        <select data-cvss31-metric="I">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Availability</label>
+        <select data-cvss31-metric="A">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div data-cvss40-root>
+  <div class="field-grid">
+    <div class="field">
+      <label for="{{ form.cvss_4_score.id_for_label }}">CVSS 4.0 score (optional)</label>
+      {{ form.cvss_4_score }}
+      {{ form.cvss_4_score.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.cvss_4_vector.id_for_label }}">CVSS 4.0 vector (optional)</label>
+      {{ form.cvss_4_vector }}
+      {{ form.cvss_4_vector.errors }}
+    </div>
+  </div>
+
+  <div class="cvss-calc">
+    <div class="head">
+      <span>CVSS 4.0 calculator — pick metrics or paste a vector; score is the macrovector MaxSeverity.</span>
+      <span>Computed: <span class="band" data-cvss40-band>—</span></span>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>Attack Vector</label>
+        <select data-cvss40-metric="AV">
+          <option value="N">Network (N)</option>
+          <option value="A">Adjacent (A)</option>
+          <option value="L">Local (L)</option>
+          <option value="P">Physical (P)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Attack Complexity</label>
+        <select data-cvss40-metric="AC">
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Attack Requirements</label>
+        <select data-cvss40-metric="AT">
+          <option value="N">None (N)</option>
+          <option value="P">Present (P)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Privileges Required</label>
+        <select data-cvss40-metric="PR">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>User Interaction</label>
+        <select data-cvss40-metric="UI">
+          <option value="N">None (N)</option>
+          <option value="P">Passive (P)</option>
+          <option value="A">Active (A)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Vuln. Confidentiality</label>
+        <select data-cvss40-metric="VC">
+          <option value="H">High (H)</option>
+          <option value="L">Low (L)</option>
+          <option value="N">None (N)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Vuln. Integrity</label>
+        <select data-cvss40-metric="VI">
+          <option value="H">High (H)</option>
+          <option value="L">Low (L)</option>
+          <option value="N">None (N)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Vuln. Availability</label>
+        <select data-cvss40-metric="VA">
+          <option value="H">High (H)</option>
+          <option value="L">Low (L)</option>
+          <option value="N">None (N)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sub. Confidentiality</label>
+        <select data-cvss40-metric="SC">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sub. Integrity</label>
+        <select data-cvss40-metric="SI">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+          <option value="S">Safety (S)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sub. Availability</label>
+        <select data-cvss40-metric="SA">
+          <option value="N">None (N)</option>
+          <option value="L">Low (L)</option>
+          <option value="H">High (H)</option>
+          <option value="S">Safety (S)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
