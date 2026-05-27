@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if mode == "edit" %}Edit scope{% else %}New scope{% endif %} — ZTOps{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'report_admin:scope_list' %}">&larr; Scope categories</a></p>
+  <h1>{% if mode == "edit" %}Edit {{ category.name }}{% else %}New scope category{% endif %}</h1>
+
+  {% if form.errors %}<div class="status error">Form has errors.</div>{% endif %}
+
+  {# nosemgrep: python.django.security.django-no-csrf-token.django-no-csrf-token #}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field">
+      <label for="{{ form.name.id_for_label }}">Name</label>
+      {{ form.name }}{{ form.name.errors }}
+    </div>
+    <div class="field">
+      <label>{{ form.is_active }} Active (selectable on new reports)</label>
+      {{ form.is_active.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.methodology.id_for_label }}">Methodology snippet (markdown)</label>
+      <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div class="md-tabs"><button type="button" data-md-tab="edit">Edit</button><button type="button" data-md-tab="preview">Preview</button></div>
+        <div data-md-edit>{{ form.methodology }}</div>
+        <div data-md-preview-body class="markdown-body" style="display: none"></div>
+      </div>
+      {{ form.methodology.errors }}
+    </div>
+    <div style="margin-top: 1.25rem">
+      <button type="submit">{% if mode == "edit" %}Save{% else %}Create{% endif %}</button>
+      <a href="{% url 'report_admin:scope_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/markdown_preview.js' %}"></script>
+{% endblock %}

@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
+from apps.accounts.decorators import superadmin_required
 from apps.audit.models import AuditAction
 from apps.audit.services import audit
 from apps.findings.markdown import render_markdown
@@ -25,8 +26,19 @@ from .forms import (
     ReportContentForm,
     ReportFindingForm,
     ReportForm,
+    ReportTemplateForm,
+    ScopeCategoryForm,
+    TemplateSectionForm,
 )
-from .models import Annex, Report, ReportReviewNote, ReportStatus
+from .models import (
+    Annex,
+    Report,
+    ReportReviewNote,
+    ReportStatus,
+    ReportTemplate,
+    ScopeCategory,
+    TemplateSection,
+)
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -66,7 +78,9 @@ def report_new(request: HttpRequest) -> HttpResponse:
             messages.success(request, f"Report “{report.name}” created.")
             return redirect("reports:detail", report_id=report.id)
     else:
-        form = ReportForm()
+        form = ReportForm(
+            initial={"template": ReportTemplate.objects.filter(is_default=True).first()}
+        )
         formset = PointOfContactFormSet()
     return render(
         request,
@@ -587,3 +601,214 @@ def report_reviews_queue(request: HttpRequest) -> HttpResponse:
         "tenant/reports/review_queue.html",
         {"open_reports": list(open_qs), "closed_reports": list(closed_qs)},
     )
+
+
+# ---- ScopeCategory admin (superadmin) -----------------------------------
+
+
+@superadmin_required
+def scope_categories_list(request: HttpRequest) -> HttpResponse:
+    return render(
+        request,
+        "tenant/reports/scope_categories.html",
+        {"categories": list(ScopeCategory.objects.all())},
+    )
+
+
+@superadmin_required
+@csrf_protect
+def scope_category_new(request: HttpRequest) -> HttpResponse:
+    if request.method == "POST":
+        form = ScopeCategoryForm(request.POST)
+        if form.is_valid():
+            cat = form.save(commit=False)
+            last = ScopeCategory.objects.order_by("-order").first()
+            cat.order = (last.order + 1) if last else 0
+            cat.save()
+            messages.success(request, f"Scope “{cat.name}” added.")
+            return redirect("report_admin:scope_list")
+    else:
+        form = ScopeCategoryForm()
+    return render(request, "tenant/reports/scope_form.html", {"form": form, "mode": "create"})
+
+
+@superadmin_required
+@csrf_protect
+def scope_category_edit(request: HttpRequest, slug: str) -> HttpResponse:
+    cat = get_object_or_404(ScopeCategory, slug=slug)
+    if request.method == "POST":
+        form = ScopeCategoryForm(request.POST, instance=cat)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Scope “{cat.name}” updated.")
+            return redirect("report_admin:scope_list")
+    else:
+        form = ScopeCategoryForm(instance=cat)
+    return render(
+        request,
+        "tenant/reports/scope_form.html",
+        {"form": form, "mode": "edit", "category": cat},
+    )
+
+
+@superadmin_required
+@csrf_protect
+@require_POST
+def scope_category_remove(request: HttpRequest, slug: str) -> HttpResponse:
+    cat = get_object_or_404(ScopeCategory, slug=slug)
+    if cat.reports.exists():
+        messages.error(
+            request, "Cannot remove a scope that is used by a report; deactivate it instead."
+        )
+        return redirect("report_admin:scope_list")
+    cat.delete()
+    messages.success(request, "Scope removed.")
+    return redirect("report_admin:scope_list")
+
+
+@superadmin_required
+@csrf_protect
+@require_POST
+def scope_category_move(request: HttpRequest, slug: str, direction: str) -> HttpResponse:
+    ordered = list(ScopeCategory.objects.all())
+    idx = next((i for i, c in enumerate(ordered) if c.slug == slug), None)
+    if idx is None:
+        raise Http404
+    swap = idx - 1 if direction == "up" else idx + 1
+    if 0 <= swap < len(ordered):
+        a, b = ordered[idx], ordered[swap]
+        a.order, b.order = b.order, a.order
+        if a.order == b.order:
+            a.order, b.order = swap, idx
+        ScopeCategory.objects.bulk_update([a, b], ["order"])
+    return redirect("report_admin:scope_list")
+
+
+# ---- ReportTemplate admin (superadmin) ----------------------------------
+
+
+@superadmin_required
+def templates_list(request: HttpRequest) -> HttpResponse:
+    return render(
+        request,
+        "tenant/reports/templates_list.html",
+        {"templates": list(ReportTemplate.objects.all())},
+    )
+
+
+@superadmin_required
+@csrf_protect
+def template_new(request: HttpRequest) -> HttpResponse:
+    if request.method == "POST":
+        form = ReportTemplateForm(request.POST)
+        if form.is_valid():
+            tpl = form.save()
+            messages.success(request, f"Template “{tpl.name}” created.")
+            return redirect("report_admin:template_edit", slug=tpl.slug)
+    else:
+        form = ReportTemplateForm()
+    return render(request, "tenant/reports/template_form.html", {"form": form, "mode": "create"})
+
+
+@superadmin_required
+@csrf_protect
+def template_edit(request: HttpRequest, slug: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    if request.method == "POST":
+        form = ReportTemplateForm(request.POST, instance=tpl)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Template updated.")
+            return redirect("report_admin:template_edit", slug=tpl.slug)
+    else:
+        form = ReportTemplateForm(instance=tpl)
+    return render(
+        request,
+        "tenant/reports/template_form.html",
+        {"form": form, "mode": "edit", "template": tpl, "sections": list(tpl.sections.all())},
+    )
+
+
+@superadmin_required
+@csrf_protect
+@require_POST
+def template_remove(request: HttpRequest, slug: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    if tpl.reports.exists():
+        messages.error(request, "Cannot remove a template used by a report; deactivate it instead.")
+        return redirect("report_admin:templates_list")
+    tpl.delete()
+    messages.success(request, "Template removed.")
+    return redirect("report_admin:templates_list")
+
+
+@superadmin_required
+@csrf_protect
+def section_new(request: HttpRequest, slug: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    if request.method == "POST":
+        form = TemplateSectionForm(request.POST)
+        if form.is_valid():
+            section = form.save(commit=False)
+            section.template = tpl
+            last = tpl.sections.order_by("-order").first()
+            section.order = (last.order + 1) if last else 0
+            section.save()
+            messages.success(request, "Section added.")
+            return redirect("report_admin:template_edit", slug=tpl.slug)
+    else:
+        form = TemplateSectionForm()
+    return render(
+        request,
+        "tenant/reports/section_form.html",
+        {"form": form, "template": tpl, "mode": "create"},
+    )
+
+
+@superadmin_required
+@csrf_protect
+def section_edit(request: HttpRequest, slug: str, section_id: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    section = get_object_or_404(tpl.sections, pk=section_id)
+    if request.method == "POST":
+        form = TemplateSectionForm(request.POST, instance=section)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Section updated.")
+            return redirect("report_admin:template_edit", slug=tpl.slug)
+    else:
+        form = TemplateSectionForm(instance=section)
+    return render(
+        request,
+        "tenant/reports/section_form.html",
+        {"form": form, "template": tpl, "mode": "edit", "section": section},
+    )
+
+
+@superadmin_required
+@csrf_protect
+@require_POST
+def section_remove(request: HttpRequest, slug: str, section_id: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    get_object_or_404(tpl.sections, pk=section_id).delete()
+    messages.success(request, "Section removed.")
+    return redirect("report_admin:template_edit", slug=tpl.slug)
+
+
+@superadmin_required
+@csrf_protect
+@require_POST
+def section_move(request: HttpRequest, slug: str, section_id: str, direction: str) -> HttpResponse:
+    tpl = get_object_or_404(ReportTemplate, slug=slug)
+    ordered = list(tpl.sections.all())
+    idx = next((i for i, s in enumerate(ordered) if str(s.pk) == str(section_id)), None)
+    if idx is None:
+        raise Http404
+    swap = idx - 1 if direction == "up" else idx + 1
+    if 0 <= swap < len(ordered):
+        a, b = ordered[idx], ordered[swap]
+        a.order, b.order = b.order, a.order
+        if a.order == b.order:
+            a.order, b.order = swap, idx
+        TemplateSection.objects.bulk_update([a, b], ["order"])
+    return redirect("report_admin:template_edit", slug=tpl.slug)

@@ -479,3 +479,104 @@ def test_review_note_visible_to_involved_only(client: Client) -> None:
     # outsider can't even view the report (not approved) → 404, no note leak
     client.force_login(outsider)
     assert client.get(f"/reports/{report.id}/").status_code == 404
+
+
+# ---- Phase 5a: scope category admin (superadmin) ------------------------
+
+
+@pytest.mark.django_db
+def test_scope_admin_requires_superadmin(client: Client) -> None:
+    regular = _user("sr@example.com")
+    client.force_login(regular)
+    # Regular users are bounced from the superadmin config area.
+    assert client.get("/super/report-config/scope/").status_code in (302, 403, 404)
+
+
+@pytest.mark.django_db
+def test_superadmin_creates_scope_with_methodology(client: Client) -> None:
+    sa = _user("sad@example.com", role=Role.SUPERADMIN.value)
+    client.force_login(sa)
+    resp = client.post(
+        "/super/report-config/scope/new/",
+        data={"name": "IoT Testing", "is_active": "on", "methodology": "## IoT\n\nsteps"},
+    )
+    assert resp.status_code == 302
+    cat = ScopeCategory.objects.get(name="IoT Testing")
+    assert cat.slug == "iot-testing"  # auto-slugged
+    assert "IoT" in cat.methodology
+
+
+@pytest.mark.django_db
+def test_cannot_remove_scope_in_use(client: Client) -> None:
+    sa = _user("sad2@example.com", role=Role.SUPERADMIN.value)
+    cat = ScopeCategory.objects.create(name="In Use", slug="in-use", order=0)
+    report = Report.objects.create(name="R", client=_vendor(), created_by=sa)
+    report.scope_categories.add(cat)
+    client.force_login(sa)
+    resp = client.post(f"/super/report-config/scope/{cat.slug}/remove/")
+    assert resp.status_code == 302
+    assert ScopeCategory.objects.filter(pk=cat.pk).exists()  # blocked — still there
+
+
+# ---- Phase 5b: report templates (superadmin) ----------------------------
+
+
+@pytest.mark.django_db
+def test_templates_seeded() -> None:
+    from apps.reports.models import ReportTemplate  # noqa: PLC0415
+
+    assert ReportTemplate.objects.filter(slug="pen-test", is_default=True).exists()
+    assert ReportTemplate.objects.filter(slug="red-team").exists()
+    pen = ReportTemplate.objects.get(slug="pen-test")
+    assert pen.sections.count() == 9  # standard section set
+
+
+@pytest.mark.django_db
+def test_template_admin_requires_superadmin(client: Client) -> None:
+    client.force_login(_user("treg@example.com"))
+    assert client.get("/super/report-config/").status_code in (302, 403, 404)
+
+
+@pytest.mark.django_db
+def test_superadmin_edits_section_body(client: Client) -> None:
+    from apps.reports.models import ReportTemplate  # noqa: PLC0415
+
+    sa = _user("tsa@example.com", role=Role.SUPERADMIN.value)
+    pen = ReportTemplate.objects.get(slug="pen-test")
+    methodology = pen.sections.get(kind="methodology")
+    client.force_login(sa)
+    resp = client.post(
+        f"/super/report-config/templates/pen-test/sections/{methodology.id}/edit/",
+        data={"kind": "methodology", "title": "Methodology", "enabled": "on", "body": "intro text"},
+    )
+    assert resp.status_code == 302
+    methodology.refresh_from_db()
+    assert methodology.body == "intro text"
+
+
+@pytest.mark.django_db
+def test_single_default_template_enforced(client: Client) -> None:
+    from apps.reports.models import ReportTemplate  # noqa: PLC0415
+
+    sa = _user("td@example.com", role=Role.SUPERADMIN.value)
+    client.force_login(sa)
+    # Make Red Team the default → Pen Test must lose default.
+    client.post(
+        "/super/report-config/templates/red-team/edit/",
+        data={"name": "Red Team", "is_default": "on", "is_active": "on"},
+    )
+    assert ReportTemplate.objects.filter(is_default=True).count() == 1
+    assert ReportTemplate.objects.get(slug="red-team").is_default is True
+
+
+@pytest.mark.django_db
+def test_cannot_remove_template_in_use(client: Client) -> None:
+    from apps.reports.models import ReportTemplate  # noqa: PLC0415
+
+    sa = _user("tu@example.com", role=Role.SUPERADMIN.value)
+    pen = ReportTemplate.objects.get(slug="pen-test")
+    Report.objects.create(name="R", client=_vendor(), created_by=sa, template=pen)
+    client.force_login(sa)
+    resp = client.post("/super/report-config/templates/pen-test/remove/")
+    assert resp.status_code == 302
+    assert ReportTemplate.objects.filter(slug="pen-test").exists()  # blocked

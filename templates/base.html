@@ -789,6 +789,7 @@
       {% if not request.user.is_review_authority %}<span class="divider"></span>{% endif %}
       <a href="{% url 'accounts:users_list' %}" class="{% if path|slice:':13' == '/super/users/' %}active{% endif %}">Users</a>
       <a href="{% url 'approvals:list' %}" class="{% if path|slice:':17' == '/super/approvals/' %}active{% endif %}">Approvals</a>
+      <a href="{% url 'report_admin:templates_list' %}" class="{% if path|slice:':20' == '/super/report-config' %}active{% endif %}">Templates</a>
       <a href="/super/admin/" class="{% if path|slice:':13' == '/super/admin/' %}active{% endif %}">Admin</a>
     {% endif %}
     {% endwith %}

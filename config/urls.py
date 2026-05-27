@@ -46,5 +46,6 @@ urlpatterns = [
     # (which matches the bare "super/reviews/" path).
     path("super/reviews/reports/", include("apps.reports.review_urls")),
     path("super/reviews/", include("apps.findings.reviews_urls")),
+    path("super/report-config/", include("apps.reports.admin_urls")),
     path("super/admin/", superadmin_site.urls),
 ]
