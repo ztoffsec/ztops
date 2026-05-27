@@ -121,6 +121,26 @@ def store_from_path(src: Path, finding_id: str) -> tuple[str, Path, int]:
         raise
 
 
+def store_bytes(data: bytes, finding_id: str) -> tuple[str, Path, int]:
+    """Store an in-memory byte blob (e.g. a re-encoded image) content-addressed.
+
+    Returns (sha256_hex, final_path, bytes_written). De-dups: if the
+    sha256-named destination already exists, no write happens.
+    """
+    bucket = _bucket(finding_id)
+    digest = hashlib.sha256(data).hexdigest()
+    final = bucket / digest
+    if not final.exists():
+        tmp = bucket / f".tmp-bytes-{digest[:16]}"
+        try:
+            tmp.write_bytes(data)
+            tmp.rename(final)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+    return digest, final, len(data)
+
+
 def delete_blob(finding_id: str, sha256: str) -> None:
     """Remove the on-disk file. Idempotent — missing file is not an error."""
     target = path_for(finding_id, sha256)

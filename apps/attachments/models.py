@@ -36,6 +36,10 @@ class Attachment(models.Model):
     content_type = models.CharField(max_length=120)
     size_bytes = models.PositiveBigIntegerField(default=0)
     sha256_hash = models.CharField(max_length=64, db_index=True)
+    # True only for images that were re-encoded by apps.attachments.images and
+    # are therefore safe to serve INLINE (image/*). Everything else is download-
+    # only (octet-stream + attachment). serve_image refuses non-inline rows.
+    is_inline_image = models.BooleanField(default=False)
     # Storage path is opaque — the signed-URL endpoint serves the bytes.
     # NEVER under Django's MEDIA_ROOT (hardening requirement #8).
     storage_path = models.CharField(max_length=500, blank=True)

@@ -177,7 +177,7 @@
       {% csrf_token %}
       <div class="field">
         <label for="id_body">Add a note (markdown)</label>
-        <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}" data-image-upload-url="{% url 'attachments:image_upload' finding.id %}">
           <div class="md-tabs">
             <button type="button" data-md-tab="edit">Edit</button>
             <button type="button" data-md-tab="preview">Preview</button>
@@ -389,7 +389,7 @@
       {% csrf_token %}
       <div class="field">
         <label for="id_review_body">Add a review note (markdown)</label>
-        <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+        <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}" data-image-upload-url="{% url 'attachments:image_upload' finding.id %}">
           <div class="md-tabs">
             <button type="button" data-md-tab="edit">Edit</button>
             <button type="button" data-md-tab="preview">Preview</button>
@@ -454,5 +454,6 @@
 
 {% block scripts %}
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script src="{% static 'js/embed_image.js' %}"></script>
 <script src="{% static 'js/finding_tabs.js' %}"></script>
 {% endblock %}

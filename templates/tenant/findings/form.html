@@ -319,7 +319,7 @@
 
   <div class="field">
     <label for="{{ form.narrative.id_for_label }}">Narrative (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
@@ -332,7 +332,7 @@
 
   <div class="field">
     <label for="{{ form.poc.id_for_label }}">Proof of Concept (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
@@ -345,7 +345,7 @@
 
   <div class="field">
     <label for="{{ form.remediation.id_for_label }}">Remediation recommendation (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
@@ -438,6 +438,7 @@
 <script src="{% static 'js/cvss40.js' %}"></script>
 <script src="{% static 'js/tag_input.js' %}"></script>
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script src="{% static 'js/embed_image.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
   // Append a known-host chip to the affected-hosts textarea (no dupes).
   (function () {
