@@ -49,44 +49,46 @@ def upload(request: HttpRequest, finding_id: str) -> HttpResponse:
     if not finding.can_user_edit(request.user):
         raise Http404
 
-    upload_file = request.FILES.get("file")
-    if not upload_file:
-        messages.error(request, "Pick a file to upload.")
+    upload_files = request.FILES.getlist("file")
+    if not upload_files:
+        messages.error(request, "Pick one or more files to upload.")
         return redirect(f"/findings/{finding.id}/?tab=artifacts")
 
-    if upload_file.size > settings.ATTACHMENTS_MAX_SIZE:
-        messages.error(
-            request,
-            f"File exceeds {settings.ATTACHMENTS_MAX_SIZE // (1024 * 1024)} MiB limit.",
+    limit = settings.ATTACHMENTS_MAX_SIZE
+    created = 0
+    skipped_dupe = 0
+    too_big: list[str] = []
+    for upload_file in upload_files:
+        if upload_file.size > limit:
+            too_big.append(safe_display_name(upload_file.name))
+            continue
+        display = safe_display_name(upload_file.name)
+        sha256, _path, bytes_written = hash_and_store(upload_file, str(finding.id))
+        # Same bytes already attached to this finding → skip the duplicate row.
+        if Attachment.objects.filter(finding=finding, sha256_hash=sha256).exists():
+            skipped_dupe += 1
+            continue
+        Attachment.objects.create(
+            finding=finding,
+            filename=display,
+            content_type=getattr(upload_file, "content_type", "") or "",
+            size_bytes=bytes_written,
+            sha256_hash=sha256,
+            storage_path=str(path_for(str(finding.id), sha256)),
+            uploaded_by=request.user,
+            uploaded_by_email=request.user.email,
+            # ClamAV wiring lands in Phase 5; SKIPPED makes the intent explicit.
+            scan_status=ScanStatus.SKIPPED,
         )
-        return redirect(f"/findings/{finding.id}/?tab=artifacts")
+        created += 1
 
-    display = safe_display_name(upload_file.name)
-    sha256, _path, bytes_written = hash_and_store(upload_file, str(finding.id))
-
-    # If the same bytes were already attached to this finding, surface that
-    # rather than creating a duplicate row.
-    existing = Attachment.objects.filter(finding=finding, sha256_hash=sha256).first()
-    if existing:
-        messages.warning(
-            request,
-            f"File already attached as {existing.filename}.",
-        )
-        return redirect(f"/findings/{finding.id}/?tab=artifacts")
-
-    Attachment.objects.create(
-        finding=finding,
-        filename=display,
-        content_type=getattr(upload_file, "content_type", "") or "",
-        size_bytes=bytes_written,
-        sha256_hash=sha256,
-        storage_path=str(path_for(str(finding.id), sha256)),
-        uploaded_by=request.user,
-        uploaded_by_email=request.user.email,
-        # ClamAV wiring lands in Phase 5; SKIPPED makes the intent explicit.
-        scan_status=ScanStatus.SKIPPED,
-    )
-    messages.success(request, f"Uploaded {display}.")
+    if created:
+        messages.success(request, f"Uploaded {created} file{'s' if created != 1 else ''}.")
+    if skipped_dupe:
+        messages.warning(request, f"Skipped {skipped_dupe} already-attached file(s).")
+    if too_big:
+        mib = limit // (1024 * 1024)
+        messages.error(request, f"Skipped (over {mib} MiB): {', '.join(too_big)}.")
     return redirect(f"/findings/{finding.id}/?tab=artifacts")
 
 
