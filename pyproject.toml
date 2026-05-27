@@ -33,6 +33,7 @@ dependencies = [
     "gunicorn>=23.0,<24.0",
     "uvicorn[standard]>=0.32,<0.40",
     "python-dotenv>=1.0,<2.0",
+    "weasyprint>=68,<69",
 ]
 
 [dependency-groups]

@@ -13,7 +13,10 @@
         <span class="pill">{{ report.classification }}</span>
       </p>
     </div>
-    {% if can_edit %}<a href="{% url 'reports:edit' report.id %}" class="btn btn-secondary">Edit</a>{% endif %}
+    <span class="row-actions">
+      {% if report.status == "approved" %}<a href="{% url 'reports:export_pdf' report.id %}" class="btn">Export PDF</a>{% endif %}
+      {% if can_edit %}<a href="{% url 'reports:edit' report.id %}" class="btn btn-secondary">Edit</a>{% endif %}
+    </span>
   </div>
 </div>
 

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ report.name }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 18mm 20mm 18mm;
+    @bottom-left { content: "{{ report.classification }}"; font: 7pt "Helvetica", sans-serif; color: #b91c1c; letter-spacing: 0.08em; }
+    @bottom-center { content: "{{ report.client.name }}"; font: 7pt "Helvetica", sans-serif; color: #888; }
+    @bottom-right { content: "Page " counter(page) " / " counter(pages); font: 7pt "Helvetica", sans-serif; color: #888; }
+  }
+  @page cover { margin: 0; @bottom-left { content: ""; } @bottom-center { content: ""; } @bottom-right { content: ""; } }
+
+  * { box-sizing: border-box; }
+  body { font-family: "Helvetica", "Arial", sans-serif; color: #18181b; font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1, h2, h3 { font-family: "Helvetica", sans-serif; color: #0a0a0a; letter-spacing: -0.01em; }
+  h2 { font-size: 16pt; border-bottom: 2px solid {{ theme.accent }}; padding-bottom: 4px; margin: 0 0 12px; }
+  h3 { font-size: 12pt; margin: 16px 0 6px; }
+  p { margin: 0 0 8px; }
+  code { font-family: "DejaVu Sans Mono", monospace; font-size: 9pt; background: #f4f4f5; color: #18181b; padding: 1px 4px; border-radius: 3px; }
+  pre { background: #0a0a0a; color: #e4e4e7; padding: 10px 12px; border-radius: 5px; font-size: 8.5pt; overflow-wrap: anywhere; white-space: pre-wrap; }
+  /* Code inside a fenced block must not inherit the inline-code light bg
+     (which would wash out the text on the dark pre). */
+  pre code, pre.hl code { background: transparent; color: #e4e4e7; padding: 0; border-radius: 0; }
+  pre.hl, pre code span { background: transparent; color: #e4e4e7; }
+  a { color: #1d4ed8; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin: 8px 0 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e4e7; vertical-align: top; }
+  th { background: #0a0a0a; color: #fafafa; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .section { page-break-before: always; }
+
+  /* Cover — elite/offensive dark look */
+  .cover {
+    page: cover; page-break-after: always;
+    min-height: 297mm; background: #0a0a0a; color: #fafafa;
+    padding: 28mm 22mm; position: relative;
+    background-image: radial-gradient(circle at 82% 14%, {{ theme.g1 }}, transparent 48%),
+                      radial-gradient(circle at 8% 90%, {{ theme.g2 }}, transparent 50%);
+  }
+  .cover .logo { height: 96px; margin-bottom: 44mm; }
+  .cover .kicker { color: {{ theme.accent }}; font-size: 9pt; letter-spacing: 0.35em; text-transform: uppercase; margin-bottom: 10px; }
+  .cover h1 { color: #fafafa; font-size: 30pt; line-height: 1.1; margin: 0 0 14px; }
+  .cover .subtitle { color: #a1a1aa; font-size: 12pt; margin-bottom: 30mm; }
+  .cover table { color: #d4d4d8; font-size: 9.5pt; border: 0; }
+  .cover th, .cover td { border-bottom: 1px solid #27272a; background: transparent; color: #d4d4d8; text-transform: none; letter-spacing: 0; }
+  .cover th { color: #71717a; width: 32%; font-weight: 600; }
+  .cover .classification { position: absolute; top: 22mm; right: 22mm; border: 1px solid {{ theme.accent }}; color: {{ theme.accent }}; padding: 4px 12px; font-size: 8pt; letter-spacing: 0.12em; border-radius: 3px; }
+
+  .sev { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 8pt; font-weight: 700; color: #fff; }
+  .sev-critical { background: #b91c1c; } .sev-high { background: #c2410c; } .sev-medium { background: #b45309; }
+  .sev-low { background: #15803d; } .sev-none { background: #6b7280; }
+
+  .finding { margin-bottom: 18px; }
+  /* One finding per page: every finding after the first starts a new page,
+     so the first stays under the "Findings" header and none overlap. */
+  .finding + .finding { page-break-before: always; }
+  .finding .fhead { display: flex; justify-content: space-between; align-items: baseline; border-left: 4px solid {{ theme.accent }}; padding-left: 10px; }
+  .finding .fid { font-family: "DejaVu Sans Mono", monospace; color: #71717a; font-size: 9pt; }
+  .meta-kv { width: auto; margin: 8px 0 12px; border-collapse: collapse; font-size: 9pt; }
+  .meta-kv th { background: transparent; border: 0; text-align: left; color: #71717a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 7.5pt; padding: 2px 16px 2px 0; vertical-align: top; white-space: nowrap; }
+  .meta-kv td { background: transparent; border: 0; padding: 2px 0; color: #18181b; }
+  .meta-kv .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 8.5pt; word-break: break-all; }
+  .fsection { margin: 10px 0; border: 1px solid #e4e4e7; border-radius: 5px; overflow: hidden; page-break-inside: avoid; }
+  .fsection .flabel { background: #f4f4f5; border-bottom: 1px solid #e4e4e7; border-left: 3px solid {{ theme.accent }}; color: #3f3f46; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 5px 10px; }
+  .fsection .fcontent { padding: 9px 12px; }
+  .fsection .fcontent > :first-child { margin-top: 0; }
+  .fsection .fcontent > :last-child { margin-bottom: 0; }
+  .annex { page-break-before: always; }
+  .toc li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+{# ---- Cover ---- #}
+<section class="cover">
+  {% if report.classification %}<div class="classification">{{ report.classification }}</div>{% endif %}
+  {% if logo %}<img class="logo" src="{{ logo }}" alt="">{% endif %}
+  <div class="kicker">Offensive Security Evaluation</div>
+  <h1>{{ report.name }}</h1>
+  <div class="subtitle">Performed against {{ report.client.name }}</div>
+  <table>
+    <tr><th>Client</th><td>{{ report.client.name }}</td></tr>
+    <tr><th>Environments</th><td>{% for s in scopes %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</td></tr>
+    <tr><th>Dates</th><td>{{ report.engagement_start|date:"Y-m-d"|default:"—" }} → {{ report.engagement_end|date:"Y-m-d"|default:"—" }}{% if days %} ({{ days }} day{{ days|pluralize }}){% endif %}</td></tr>
+    <tr><th>Report date</th><td>{{ report.engagement_end|date:"Y-m-d"|default:"—" }}</td></tr>
+    <tr><th>Classification</th><td>{{ report.classification }}</td></tr>
+  </table>
+</section>
+
+{# ---- Sections (in template order) ---- #}
+{% for s in sections %}
+{% if s.kind != "cover" %}
+<section class="section">
+  <h2>{{ s.title }}</h2>
+
+  {% if s.kind == "index" %}
+    <ol class="toc">
+      {% for inner in sections %}{% if inner.kind != "cover" and inner.kind != "index" %}<li>{{ inner.title }}</li>{% endif %}{% endfor %}
+    </ol>
+
+  {% elif s.kind == "findings_summary" %}
+    <table>
+      <thead><tr><th>ID</th><th>Finding</th><th>Affected hosts</th><th>Severity</th><th>CVSS</th></tr></thead>
+      <tbody>
+        {% for f in findings %}
+        <tr>
+          <td class="fid">{{ f.finding.internal_id }}</td>
+          <td>{{ f.finding.title }}</td>
+          <td>{% for h in f.affected_hosts %}{{ h.value }}{% if not forloop.last %}<br>{% endif %}{% empty %}—{% endfor %}</td>
+          <td><span class="sev sev-{{ f.finding.severity }}">{{ f.finding.get_severity_display }}</span></td>
+          <td>{{ f.finding.cvss_4_score|default:f.finding.cvss_31_score|default:"—" }}</td>
+        </tr>
+        {% empty %}<tr><td colspan="5">No findings.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+
+  {% elif s.kind == "findings" %}
+    {% for f in findings %}
+    <div class="finding">
+      <div class="fhead">
+        <h3>{{ f.finding.title }}</h3>
+        <span><span class="fid">{{ f.finding.internal_id }}</span> <span class="sev sev-{{ f.finding.severity }}">{{ f.finding.get_severity_display }}</span></span>
+      </div>
+      {% if f.finding.cvss_31_score or f.finding.cvss_31_vector or f.finding.cvss_4_score or f.finding.cvss_4_vector or f.finding.cwe_ids or f.finding.cve_id %}
+      <table class="meta-kv">
+        {% if f.finding.cvss_31_score or f.finding.cvss_31_vector %}<tr><th>CVSS 3.1</th><td>{% if f.finding.cvss_31_score %}{{ f.finding.cvss_31_score }}{% endif %}{% if f.finding.cvss_31_vector %} <span class="mono">{{ f.finding.cvss_31_vector }}</span>{% endif %}</td></tr>{% endif %}
+        {% if f.finding.cvss_4_score or f.finding.cvss_4_vector %}<tr><th>CVSS 4.0</th><td>{% if f.finding.cvss_4_score %}{{ f.finding.cvss_4_score }}{% endif %}{% if f.finding.cvss_4_vector %} <span class="mono">{{ f.finding.cvss_4_vector }}</span>{% endif %}</td></tr>{% endif %}
+        {% if f.finding.cwe_ids %}<tr><th>CWE</th><td class="mono">{{ f.finding.cwe_ids|join:", " }}</td></tr>{% endif %}
+        {% if f.finding.cve_id %}<tr><th>CVE</th><td class="mono">{{ f.finding.cve_id }}</td></tr>{% endif %}
+      </table>
+      {% endif %}
+      {% if f.affected_hosts %}<p><strong>Affected hosts:</strong> {% for h in f.affected_hosts %}<code>{{ h.value }}</code> {% endfor %}</p>{% endif %}
+      {% if f.narrative_html %}<div class="fsection"><div class="flabel">Narrative</div><div class="fcontent">{{ f.narrative_html|safe }}</div></div>{% endif %}
+      {% if f.poc_html %}<div class="fsection"><div class="flabel">Proof of Concept</div><div class="fcontent">{{ f.poc_html|safe }}</div></div>{% endif %}
+      {% if f.remediation_html %}<div class="fsection"><div class="flabel">Remediation</div><div class="fcontent">{{ f.remediation_html|safe }}</div></div>{% endif %}
+    </div>
+    {% empty %}<p>No findings included.</p>{% endfor %}
+
+  {% elif s.kind == "methodology" %}
+    {{ s.intro_html|safe }}
+    {% for sc in s.scopes %}<h3>{{ sc.name }}</h3>{{ sc.html|safe }}{% endfor %}
+
+  {% elif s.kind == "annexes" %}
+    {% for a in s.annexes %}
+    <div class="annex"><h3>Annex {{ a.letter }} — {{ a.title }}</h3>{{ a.html|safe }}</div>
+    {% empty %}<p>No annexes.</p>{% endfor %}
+
+  {% else %}
+    {{ s.html|safe }}
+  {% endif %}
+</section>
+{% endif %}
+{% endfor %}
+
+</body>
+</html>

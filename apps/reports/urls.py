@@ -14,6 +14,7 @@ urlpatterns = [
     path("<uuid:report_id>/", views.report_detail, name="detail"),
     path("<uuid:report_id>/edit/", views.report_edit, name="edit"),
     path("<uuid:report_id>/content/", views.report_content_edit, name="content_edit"),
+    path("<uuid:report_id>/export.pdf", views.report_export_pdf, name="export_pdf"),
     path("<uuid:report_id>/autosave/", views.report_autosave, name="autosave"),
     # Review workflow
     path("<uuid:report_id>/review/submit/", views.report_submit_review, name="submit_review"),
