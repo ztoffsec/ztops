@@ -10,6 +10,19 @@ from .models import Finding, FindingNote
 class FindingForm(forms.ModelForm):
     """Editable Finding fields. `severity` is derived on save and excluded."""
 
+    # Not a model field: free-text, one affected host per line. Parsed and
+    # vendor-scoped in the view (_sync_affected_hosts). Declared here so the
+    # value arrives validated via cleaned_data, not raw request.POST.
+    affected_hosts_text = forms.CharField(
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 4,
+                "placeholder": "example.com\nhttps://example.com/admin?id=1\n10.0.0.5",
+            },
+        ),
+    )
+
     class Meta:
         model = Finding
         fields = (
@@ -24,7 +37,9 @@ class FindingForm(forms.ModelForm):
             "cvss_4_vector",
             "status",
             "engagement",
-            "description",
+            "narrative",
+            "poc",
+            "remediation",
             "cwe_ids",
             "references",
             "disclosed_at",
@@ -33,7 +48,9 @@ class FindingForm(forms.ModelForm):
             "published_at",
         )
         widgets = {  # noqa: RUF012 — Django ModelForm convention
-            "description": forms.Textarea(attrs={"rows": 10}),
+            "narrative": forms.Textarea(attrs={"rows": 10}),
+            "poc": forms.Textarea(attrs={"rows": 8}),
+            "remediation": forms.Textarea(attrs={"rows": 6}),
             # cwe_ids + references are rendered by the chip-style tag-input
             # widget in the template. The hidden input holds the JSON array
             # the JS keeps in sync. Default to an empty array.

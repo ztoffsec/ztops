@@ -76,12 +76,14 @@ def vendor_detail(request: HttpRequest, slug: str) -> HttpResponse:
     findings = list(
         vendor.findings.select_related("reported_by").order_by("-created_at")[:200],
     )
+    affected_hosts = list(vendor.affected_hosts.order_by("value"))
     return render(
         request,
         "tenant/vendors/detail.html",
         {
             "vendor": vendor,
             "findings": findings,
+            "affected_hosts": affected_hosts,
             "can_edit": _can_edit(vendor, request.user),
         },
     )

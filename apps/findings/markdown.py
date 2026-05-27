@@ -1,4 +1,5 @@
-"""Markdown rendering for Finding.description and FindingNote.body.
+"""Markdown rendering for Finding body sections (narrative / PoC /
+remediation) and FindingNote.body.
 
 Three-layer pipeline:
 1. markdown-it-py parses with `html=False` so raw HTML inside the

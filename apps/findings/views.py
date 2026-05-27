@@ -30,7 +30,15 @@ from apps.audit.services import audit
 
 from .forms import FindingForm, FindingNoteForm
 from .markdown import render_markdown
-from .models import Channel, Finding, FindingReviewNote, ReviewState, Severity, Status
+from .models import (
+    AffectedHost,
+    Channel,
+    Finding,
+    FindingReviewNote,
+    ReviewState,
+    Severity,
+    Status,
+)
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -322,18 +330,21 @@ def finding_detail(request: HttpRequest, finding_id: str) -> HttpResponse:
         review_notes_rendered = [
             {"note": n, "body_html": render_markdown(n.body)} for n in review_notes
         ]
-    tab = (request.GET.get("tab") or "description").lower()
-    allowed_tabs = {"description", "notes", "researchers", "artifacts", "metadata"}
+    tab = (request.GET.get("tab") or "overview").lower()
+    allowed_tabs = {"overview", "notes", "researchers", "artifacts", "metadata"}
     if can_view_review:
         allowed_tabs.add("review")
     if tab not in allowed_tabs:
-        tab = "description"
+        tab = "overview"
     return render(
         request,
         "tenant/findings/detail.html",
         {
             "finding": finding,
-            "description_html": render_markdown(finding.description),
+            "narrative_html": render_markdown(finding.narrative),
+            "poc_html": render_markdown(finding.poc),
+            "remediation_html": render_markdown(finding.remediation),
+            "affected_hosts": list(finding.affected_hosts.order_by("value")),
             "notes": notes,
             "notes_rendered": notes_rendered,
             "note_form": FindingNoteForm(),
@@ -382,6 +393,7 @@ def finding_new(request: HttpRequest) -> HttpResponse:
             else:
                 finding.review_state = ReviewState.PENDING.value
             finding.save()
+            _sync_affected_hosts(finding, form.cleaned_data.get("affected_hosts_text", ""))
             if finding.review_state == ReviewState.PENDING.value:
                 messages.success(
                     request,
@@ -401,6 +413,26 @@ def finding_new(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _sync_affected_hosts(finding: Finding, raw_text: str) -> None:
+    """Parse newline-separated host values and attach them to the finding.
+
+    Every host is get-or-created **scoped to the finding's own vendor**, so a
+    value that also exists under another vendor never links across vendors
+    (cross-vendor isolation). De-dups case-insensitively and caps length.
+    """
+    seen: set[str] = set()
+    hosts: list[AffectedHost] = []
+    for line in (raw_text or "").splitlines():
+        value = line.strip()[:500]
+        key = value.lower()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        host, _ = AffectedHost.objects.get_or_create(vendor=finding.vendor, value=value)
+        hosts.append(host)
+    finding.affected_hosts.set(hosts)
+
+
 @login_required(login_url="/super/login/")
 @csrf_protect
 def finding_edit(request: HttpRequest, finding_id: str) -> HttpResponse:
@@ -410,14 +442,29 @@ def finding_edit(request: HttpRequest, finding_id: str) -> HttpResponse:
         form = FindingForm(request.POST, instance=finding)
         if form.is_valid():
             form.save()
+            _sync_affected_hosts(finding, form.cleaned_data.get("affected_hosts_text", ""))
             messages.success(request, f"Finding {finding.internal_id} updated.")
             return redirect("findings:detail", finding_id=finding.id)
     else:
-        form = FindingForm(instance=finding)
+        form = FindingForm(
+            instance=finding,
+            initial={
+                "affected_hosts_text": "\n".join(
+                    finding.affected_hosts.order_by("value").values_list("value", flat=True),
+                ),
+            },
+        )
     return render(
         request,
         "tenant/findings/form.html",
-        {"form": form, "mode": "edit", "finding": finding},
+        {
+            "form": form,
+            "mode": "edit",
+            "finding": finding,
+            "vendor_hosts": list(
+                finding.vendor.affected_hosts.order_by("value").values_list("value", flat=True),
+            ),
+        },
     )
 
 

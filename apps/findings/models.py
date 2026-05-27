@@ -197,7 +197,18 @@ class Finding(models.Model):
         blank=True,
     )
 
-    description = models.TextField(blank=True)
+    # Structured finding body. narrative = what/impact, poc = reproduction,
+    # remediation = fix guidance. All markdown, rendered via render_markdown.
+    narrative = models.TextField(blank=True)
+    poc = models.TextField(blank=True)
+    remediation = models.TextField(blank=True)
+    # Hosts/URLs/assets this finding affects. Vendor-scoped (see AffectedHost);
+    # choices are restricted to the finding's vendor in the form/view.
+    affected_hosts = models.ManyToManyField(
+        "AffectedHost",
+        related_name="findings",
+        blank=True,
+    )
     cwe_ids = models.JSONField(default=list, blank=True)
     references = models.JSONField(default=list, blank=True)
 
@@ -397,3 +408,35 @@ class FindingReviewNote(models.Model):
 
     def __str__(self) -> str:
         return f"ReviewNote on {self.finding.internal_id} by {self.author_email or 'unknown'}"
+
+
+class AffectedHost(models.Model):
+    """A host / URL / asset affected by one or more findings, scoped to a vendor.
+
+    Stored against the vendor so it can be reused across that vendor's
+    findings via a dropdown without re-typing. **Never shared across
+    vendors** — the form and view restrict the selectable set to the
+    finding's own vendor, so a finding can't reference another client's
+    hosts (cross-vendor isolation).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    vendor = models.ForeignKey(
+        "vendors.Vendor",
+        on_delete=models.CASCADE,
+        related_name="affected_hosts",
+    )
+    value = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("value",)
+        constraints: ClassVar[list[models.BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=["vendor", "value"],
+                name="affectedhost_vendor_value_unique",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.value

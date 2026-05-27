@@ -38,6 +38,18 @@
   }
   .cvss-calc select { padding: 0.375rem 1.75rem 0.375rem 0.5rem; font-size: 0.8125rem; }
   /* Tag-input + autocomplete styling lives in base.html (used elsewhere too). */
+  .host-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.375rem; }
+  .host-chip {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-family: ui-monospace, monospace;
+    cursor: pointer;
+  }
+  .host-chip:hover { border-color: var(--accent); }
 </style>
 {% endblock %}
 
@@ -306,18 +318,57 @@
   </div>
 
   <div class="field">
-    <label for="{{ form.description.id_for_label }}">Description (markdown)</label>
+    <label for="{{ form.narrative.id_for_label }}">Narrative (markdown)</label>
     <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
       </div>
-      <div data-md-edit>
-        {{ form.description }}
-      </div>
+      <div data-md-edit>{{ form.narrative }}</div>
       <div data-md-preview-body class="markdown-body" style="display: none"></div>
     </div>
-    {{ form.description.errors }}
+    {{ form.narrative.errors }}
+  </div>
+
+  <div class="field">
+    <label for="{{ form.poc.id_for_label }}">Proof of Concept (markdown)</label>
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+      <div class="md-tabs">
+        <button type="button" data-md-tab="edit">Edit</button>
+        <button type="button" data-md-tab="preview">Preview</button>
+      </div>
+      <div data-md-edit>{{ form.poc }}</div>
+      <div data-md-preview-body class="markdown-body" style="display: none"></div>
+    </div>
+    {{ form.poc.errors }}
+  </div>
+
+  <div class="field">
+    <label for="{{ form.remediation.id_for_label }}">Remediation recommendation (markdown)</label>
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}">
+      <div class="md-tabs">
+        <button type="button" data-md-tab="edit">Edit</button>
+        <button type="button" data-md-tab="preview">Preview</button>
+      </div>
+      <div data-md-edit>{{ form.remediation }}</div>
+      <div data-md-preview-body class="markdown-body" style="display: none"></div>
+    </div>
+    {{ form.remediation.errors }}
+  </div>
+
+  <div class="field">
+    <label for="{{ form.affected_hosts_text.id_for_label }}">Affected hosts</label>
+    <p class="meta">One host / URL / asset per line — bulk-paste supported.</p>
+    {{ form.affected_hosts_text }}
+    {{ form.affected_hosts_text.errors }}
+    {% if vendor_hosts %}
+    <p class="meta">Known hosts for this vendor — click to add:</p>
+    <div class="host-chips">
+      {% for h in vendor_hosts %}
+      <button type="button" class="host-chip" data-host-add="{{ h }}">{{ h }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   <div class="field">
@@ -387,4 +438,21 @@
 <script src="{% static 'js/cvss40.js' %}"></script>
 <script src="{% static 'js/tag_input.js' %}"></script>
 <script src="{% static 'js/markdown_preview.js' %}"></script>
+<script nonce="{{ request.csp_nonce }}">
+  // Append a known-host chip to the affected-hosts textarea (no dupes).
+  (function () {
+    var ta = document.getElementById("id_affected_hosts_text");
+    if (!ta) return;
+    document.querySelectorAll("[data-host-add]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        var host = chip.getAttribute("data-host-add");
+        var lines = ta.value.split("\n").map(function (l) { return l.trim(); });
+        if (lines.indexOf(host) === -1) {
+          ta.value = (ta.value.replace(/\s*$/, "") + "\n" + host).replace(/^\n/, "");
+        }
+        ta.focus();
+      });
+    });
+  })();
+</script>
 {% endblock %}
