@@ -457,6 +457,24 @@
     border-color: var(--success);
   }
   .inline-form { display: inline; }
+  /* Prominent create call-to-action (New finding / engagement / user). */
+  .btn-create {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+  .btn-create::before { content: "+"; margin-right: 0.4rem; font-weight: 700; }
+  .btn-create:hover { text-decoration: none; }
+  /* Page header: title block on the left, primary action on the right. */
+  .page-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .page-head > .titles { min-width: 0; }
 
   /* status / output */
   .status { display: block; margin-top: 1rem; font-size: 0.8125rem; min-height: 1.25rem; }

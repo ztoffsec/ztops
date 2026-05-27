@@ -13,7 +13,6 @@ class FindingForm(forms.ModelForm):
     class Meta:
         model = Finding
         fields = (
-            "internal_id",
             "title",
             "vendor",
             "channel",

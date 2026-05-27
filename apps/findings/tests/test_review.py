@@ -66,7 +66,6 @@ def test_new_finding_by_regular_starts_pending(client: Client) -> None:
     response = client.post(
         "/findings/new/",
         data={
-            "internal_id": "REG-001",
             "title": "x",
             "vendor": str(v.id),
             "channel": Channel.OTHER.value,
@@ -88,7 +87,7 @@ def test_new_finding_by_regular_starts_pending(client: Client) -> None:
         },
     )
     assert response.status_code == 302, response.content
-    f = Finding.objects.get(internal_id="REG-001")
+    f = Finding.objects.get(title="x")
     assert f.review_state == ReviewState.PENDING.value
 
 
@@ -100,7 +99,6 @@ def test_new_finding_by_superadmin_starts_approved(client: Client) -> None:
     response = client.post(
         "/findings/new/",
         data={
-            "internal_id": "SA-001",
             "title": "x",
             "vendor": str(v.id),
             "channel": Channel.OTHER.value,
@@ -122,7 +120,7 @@ def test_new_finding_by_superadmin_starts_approved(client: Client) -> None:
         },
     )
     assert response.status_code == 302
-    f = Finding.objects.get(internal_id="SA-001")
+    f = Finding.objects.get(title="x")
     assert f.review_state == ReviewState.APPROVED.value
 
 
@@ -134,7 +132,6 @@ def test_new_finding_by_explicit_reviewer_starts_approved(client: Client) -> Non
     client.post(
         "/findings/new/",
         data={
-            "internal_id": "REV-001",
             "title": "x",
             "vendor": str(v.id),
             "channel": Channel.OTHER.value,
@@ -143,7 +140,7 @@ def test_new_finding_by_explicit_reviewer_starts_approved(client: Client) -> Non
             "references": "[]",
         },
     )
-    f = Finding.objects.get(internal_id="REV-001")
+    f = Finding.objects.get(title="x")
     assert f.review_state == ReviewState.APPROVED.value
 
 

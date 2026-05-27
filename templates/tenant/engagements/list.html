@@ -4,11 +4,13 @@
 
 {% block content %}
 <div class="card">
-  <h1>Engagements</h1>
-  <p class="meta">
-    {{ engagements|length }} engagement{{ engagements|length|pluralize }}.
-    <a href="{% url 'engagements:new' %}">New engagement</a>
-  </p>
+  <div class="page-head">
+    <div class="titles">
+      <h1>Engagements</h1>
+      <p class="meta">{{ engagements|length }} engagement{{ engagements|length|pluralize }}.</p>
+    </div>
+    <a href="{% url 'engagements:new' %}" class="btn btn-create">New engagement</a>
+  </div>
 </div>
 
 <div class="card">

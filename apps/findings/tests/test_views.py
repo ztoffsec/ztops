@@ -253,7 +253,6 @@ def test_new_post_creates_finding(client: Client) -> None:
     response = client.post(
         "/findings/new/",
         data={
-            "internal_id": "NEW-001",
             "title": "fresh finding",
             "vendor": str(v.id),
             "channel": Channel.OTHER.value,
@@ -275,9 +274,12 @@ def test_new_post_creates_finding(client: Client) -> None:
         },
     )
     assert response.status_code == 302, response.content
-    f = Finding.objects.get(internal_id="NEW-001")
+    f = Finding.objects.get(title="fresh finding")
     assert f.reported_by_id == user.id
     assert user in f.assigned_researchers.all()
+    # internal_id is auto-assigned: ZT-{year}-{7 digits}.
+    assert f.internal_id.startswith("ZT-")
+    assert len(f.internal_id.split("-")[-1]) == 7
 
 
 @pytest.mark.django_db

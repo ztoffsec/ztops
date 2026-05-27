@@ -17,10 +17,12 @@ save() — callers never set it directly. Bands per the standard:
 
 from __future__ import annotations
 
+import secrets
 from decimal import Decimal
 from typing import ClassVar
 
 from django.db import models
+from django.utils import timezone
 
 from core.security.uuids import uuid7
 
@@ -115,7 +117,9 @@ class Finding(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
-    internal_id = models.CharField(max_length=40)
+    # System-assigned (ZT-{year}-{7 digits}); never set by hand. editable=False
+    # keeps it out of every ModelForm and the admin.
+    internal_id = models.CharField(max_length=40, editable=False)
     title = models.CharField(max_length=300)
     vendor = models.ForeignKey(
         "vendors.Vendor",
@@ -222,6 +226,10 @@ class Finding(models.Model):
         return f"{self.internal_id}: {self.title}"
 
     def save(self, *args: object, **kwargs: object) -> None:
+        # Auto-assign the human-facing id on first save when none was set.
+        # Findings are no longer numbered by hand; the form omits the field.
+        if not self.internal_id:
+            self.internal_id = self.generate_internal_id()
         # Derive severity from the highest CVSS score present. When both
         # 3.1 and 4.0 are set they often disagree (different formulas for
         # the same vuln); user-facing severity should reflect the worst
@@ -234,6 +242,20 @@ class Finding(models.Model):
         if self.reported_by_id and not self.reported_by_email:
             self.reported_by_email = self.reported_by.email
         super().save(*args, **kwargs)
+
+    @staticmethod
+    def generate_internal_id() -> str:
+        """Allocate a unique human-facing id of the form ``ZT-{year}-{7 digits}``.
+
+        Retries on the rare random collision against the unique constraint.
+        """
+        year = timezone.now().year
+        for _ in range(50):
+            candidate = f"ZT-{year}-{secrets.randbelow(10_000_000):07d}"
+            if not Finding.objects.filter(internal_id=candidate).exists():
+                return candidate
+        msg = "Could not allocate a unique internal_id after 50 attempts."
+        raise RuntimeError(msg)
 
     def can_user_edit(self, user: object) -> bool:
         """Return True if `user` can edit this finding's content or add notes.
