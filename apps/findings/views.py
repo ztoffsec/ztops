@@ -17,14 +17,17 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST, require_safe
 
 from apps.accounts.models import User
+from apps.attachments.views import InlineImageError, attach_inline_image
 from apps.audit.models import AuditAction
 from apps.audit.services import audit
 
@@ -409,6 +412,59 @@ def finding_new(request: HttpRequest) -> HttpResponse:
         request,
         "tenant/findings/form.html",
         {"form": form, "mode": "create"},
+    )
+
+
+@login_required(login_url="/super/login/")
+@csrf_protect
+@require_POST
+def finding_new_upload_image(request: HttpRequest) -> JsonResponse:
+    """Lazy create a Finding + attach a pasted/dropped image in one request.
+
+    The new-finding form has no `finding_id` yet, so the per-finding
+    `attachments:image_upload` endpoint can't be wired. This endpoint takes
+    the current form state alongside the image, creates the Finding (if the
+    form validates), attaches the image, and returns the IDs the client
+    needs to migrate to the edit URL for any subsequent uploads + the final
+    save. The Finding row + image attach happen in a single transaction, so
+    a rejected image cannot leave a phantom Finding behind.
+    """
+    upload_file = request.FILES.get("image")
+    if not upload_file:
+        return JsonResponse({"error": "no_file"}, status=400)
+    form = FindingForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"error": "form_invalid", "errors": form.errors.get_json_data()},
+            status=400,
+        )
+    try:
+        with transaction.atomic():
+            finding = form.save(commit=False)
+            finding.reported_by = request.user
+            finding.reported_by_email = request.user.email
+            finding.review_state = (
+                ReviewState.APPROVED.value
+                if request.user.is_review_authority
+                else ReviewState.PENDING.value
+            )
+            finding.save()
+            _sync_affected_hosts(finding, form.cleaned_data.get("affected_hosts_text", ""))
+            att, image_url = attach_inline_image(finding, upload_file, request.user)
+    except InlineImageError as e:
+        return JsonResponse({"error": e.args[0]}, status=400)
+    return JsonResponse(
+        {
+            "finding_id": str(finding.id),
+            "internal_id": finding.internal_id,
+            "edit_url": reverse("findings:edit", args=[str(finding.id)]),
+            "image_upload_url": reverse(
+                "attachments:image_upload",
+                args=[str(finding.id)],
+            ),
+            "image_url": image_url,
+            "image_filename": att.filename,
+        },
     )
 
 
