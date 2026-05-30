@@ -97,6 +97,43 @@ def upload(request: HttpRequest, finding_id: str) -> HttpResponse:
     return redirect(f"/findings/{finding.id}/?tab=artifacts")
 
 
+class InlineImageError(ValueError):
+    """Raised by attach_inline_image with a stable code in `.args[0]`."""
+
+
+def attach_inline_image(
+    finding: Finding, upload_file: object, user: object
+) -> tuple[Attachment, str]:
+    """Re-encode + store + create an inline-image Attachment on `finding`.
+
+    Returns (attachment, serve_url). Raises InlineImageError("too_large" |
+    "not_an_image") on rejection. Idempotent: if the same SHA already exists
+    on the finding, the existing Attachment is returned.
+    """
+    if upload_file.size > settings.ATTACHMENTS_MAX_SIZE:
+        raise InlineImageError("too_large")
+    try:
+        clean, content_type, ext = reencode_image(upload_file.read())
+    except ImageRejected as e:
+        raise InlineImageError("not_an_image") from e
+    sha256, _path, size = store_bytes(clean, str(finding.id))
+    att = Attachment.objects.filter(finding=finding, sha256_hash=sha256).first()
+    if att is None:
+        att = Attachment.objects.create(
+            finding=finding,
+            filename=f"image-{sha256[:8]}.{ext}",
+            content_type=content_type,
+            size_bytes=size,
+            sha256_hash=sha256,
+            storage_path=str(path_for(str(finding.id), sha256)),
+            uploaded_by=user,
+            uploaded_by_email=user.email,
+            is_inline_image=True,
+            scan_status=ScanStatus.SKIPPED,
+        )
+    return att, reverse("attachments:image", args=[str(finding.id), str(att.id)])
+
+
 @login_required(login_url="/super/login/")
 @csrf_protect
 @require_POST
@@ -114,30 +151,10 @@ def upload_image(request: HttpRequest, finding_id: str) -> JsonResponse:
     upload_file = request.FILES.get("image")
     if not upload_file:
         return JsonResponse({"error": "no_file"}, status=400)
-    if upload_file.size > settings.ATTACHMENTS_MAX_SIZE:
-        return JsonResponse({"error": "too_large"}, status=400)
-
     try:
-        clean, content_type, ext = reencode_image(upload_file.read())
-    except ImageRejected:
-        return JsonResponse({"error": "not_an_image"}, status=400)
-
-    sha256, _path, size = store_bytes(clean, str(finding.id))
-    att = Attachment.objects.filter(finding=finding, sha256_hash=sha256).first()
-    if att is None:
-        att = Attachment.objects.create(
-            finding=finding,
-            filename=f"image-{sha256[:8]}.{ext}",
-            content_type=content_type,
-            size_bytes=size,
-            sha256_hash=sha256,
-            storage_path=str(path_for(str(finding.id), sha256)),
-            uploaded_by=request.user,
-            uploaded_by_email=request.user.email,
-            is_inline_image=True,
-            scan_status=ScanStatus.SKIPPED,
-        )
-    url = reverse("attachments:image", args=[str(finding.id), str(att.id)])
+        att, url = attach_inline_image(finding, upload_file, request.user)
+    except InlineImageError as e:
+        return JsonResponse({"error": e.args[0]}, status=400)
     return JsonResponse({"url": url, "filename": att.filename})
 
 

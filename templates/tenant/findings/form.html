@@ -86,7 +86,7 @@
 
   <div class="field">
     <label for="{{ form.narrative.id_for_label }}">Narrative (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% else %} data-image-upload-create-url="{% url 'findings:new_upload_image' %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
@@ -99,7 +99,7 @@
 
   <div class="field">
     <label for="{{ form.poc.id_for_label }}">Proof of Concept (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% else %} data-image-upload-create-url="{% url 'findings:new_upload_image' %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>
@@ -112,7 +112,7 @@
 
   <div class="field">
     <label for="{{ form.remediation.id_for_label }}">Remediation recommendation (markdown)</label>
-    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% endif %}>
+    <div data-md-preview data-endpoint="{% url 'findings:preview_markdown' %}"{% if mode == "edit" %} data-image-upload-url="{% url 'attachments:image_upload' finding.id %}"{% else %} data-image-upload-create-url="{% url 'findings:new_upload_image' %}"{% endif %}>
       <div class="md-tabs">
         <button type="button" data-md-tab="edit">Edit</button>
         <button type="button" data-md-tab="preview">Preview</button>

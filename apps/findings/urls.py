@@ -11,6 +11,7 @@ app_name = "findings"
 urlpatterns = [
     path("", views.findings_list, name="list"),
     path("new/", views.finding_new, name="new"),
+    path("new/upload-image/", views.finding_new_upload_image, name="new_upload_image"),
     path("preview-markdown/", views.preview_markdown, name="preview_markdown"),
     path("<uuid:finding_id>/", views.finding_detail, name="detail"),
     path("<uuid:finding_id>/edit/", views.finding_edit, name="edit"),
