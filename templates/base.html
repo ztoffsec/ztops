@@ -680,6 +680,16 @@
   }
   .markdown-body a { color: var(--text); text-decoration: underline; }
   .markdown-body a:hover { color: var(--accent); }
+  /* Embedded images scale to the container width on every viewport, so
+     a screenshot bigger than the card never widens the layout or spills
+     out on mobile. height: auto preserves aspect ratio. */
+  .markdown-body img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0.5rem 0;
+    border-radius: 4px;
+  }
   .markdown-body table {
     width: auto;
     max-width: 100%;
