@@ -156,14 +156,14 @@ def test_login_finish_logs_user_into_session_on_success(client: Client) -> None:
 @pytest.mark.django_db
 @override_settings(RATELIMIT_ENABLE=True)
 def test_login_start_rate_limited_returns_429(client: Client) -> None:
-    """ZT-002: per-email throttle on login_start. The 6th call within the
-    window (rate 5/m, keyed on the JSON-body email) is mapped to HTTP 429
+    """ZT-002: per-email throttle on login_start. The 4th call within the
+    window (rate 3/m, keyed on the JSON-body email) is mapped to HTTP 429
     with a Retry-After header by RatelimitTo429Middleware.
 
-    The email is read from the JSON body, not request.POST — this asserts
+    The email is read from the JSON body, not request.POST. This asserts
     the key function parses the body (otherwise every login would share one
-    'no-email' bucket and this test would still pass for the wrong reason,
-    so we also confirm a *different* email is not throttled).
+    'no-email' bucket and this test would still pass for the wrong reason),
+    so we also confirm a *different* email is not throttled.
     """
     cache.clear()  # Redis counters persist across runs; start clean.
 
@@ -174,13 +174,13 @@ def test_login_start_rate_limited_returns_429(client: Client) -> None:
             content_type="application/json",
         )
 
-    # 5 allowed (each 400 — unknown email), 6th over the per-email cap.
-    for _ in range(5):
+    # 3 allowed (each 400, unknown email), 4th over the per-email cap.
+    for _ in range(3):
         assert hit("flood@example.com").status_code == 400
     blocked = hit("flood@example.com")
     assert blocked.status_code == 429
     assert blocked["Retry-After"] == "60"
 
-    # A different email is its own bucket — not collateral-damaged. Proves the
+    # A different email is its own bucket, not collateral-damaged. Proves the
     # key is per-email (parsed from the body), not a single global bucket.
     assert hit("other@example.com").status_code == 400

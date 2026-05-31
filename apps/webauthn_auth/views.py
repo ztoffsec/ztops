@@ -133,8 +133,8 @@ def registration_finish(request: HttpRequest, token: str) -> JsonResponse:
 
 @csrf_protect
 @require_POST
-@ratelimit(key=client_ip, rate="10/m", block=True)
-@ratelimit(key=login_email, rate="5/m", block=True)
+@ratelimit(key=client_ip, rate="5/m", block=True)
+@ratelimit(key=login_email, rate="3/m", block=True)
 def login_start(request: HttpRequest) -> JsonResponse:
     try:
         body = json.loads(request.body)
