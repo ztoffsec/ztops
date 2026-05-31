@@ -80,14 +80,10 @@ def _register(
 def _login(
     client: Client,
     *,
-    email: str,
     authenticator: VirtualAuthenticator,
 ) -> dict[str, Any]:
-    start = client.post(
-        "/webauthn/login/start/",
-        data=json.dumps({"email": email}),
-        content_type="application/json",
-    )
+    """Drive the usernameless sign-in ceremony through the test client."""
+    start = client.post("/webauthn/login/start-usernameless/")
     assert start.status_code == 200, start.content
     options = start.json()
 
@@ -98,7 +94,7 @@ def _login(
     )
 
     finish = client.post(
-        "/webauthn/login/finish/",
+        "/webauthn/login/finish-usernameless/",
         data=json.dumps(payload),
         content_type="application/json",
     )
@@ -127,7 +123,7 @@ def test_phase1_exit_criterion_full_flow(client: Client) -> None:
     )
     assert WebAuthnCredential.objects.filter(user=user).count() == 1
 
-    result = _login(client, email="phase1@example.com", authenticator=authenticator)
+    result = _login(client, authenticator=authenticator)
     assert result["ok"] is True
     assert result["redirect"] == "/super/dashboard/"
 
@@ -204,18 +200,24 @@ def test_sign_count_increments_on_every_login(client: Client) -> None:
         authenticator=authenticator,
     )
 
-    _login(client, email="counter@example.com", authenticator=authenticator)
+    _login(client, authenticator=authenticator)
     cred = WebAuthnCredential.objects.get(user__email="counter@example.com")
     assert cred.sign_count == 1
 
-    _login(client, email="counter@example.com", authenticator=authenticator)
+    _login(client, authenticator=authenticator)
     cred.refresh_from_db()
     assert cred.sign_count == 2
 
 
 @pytest.mark.django_db
 def test_login_with_a_different_authenticator_fails(client: Client) -> None:
-    # Register with authenticator A.
+    """An authenticator whose credential id is not in the DB cannot sign in.
+
+    Authenticator A registers; an unrelated authenticator B mints a fresh
+    credential (whose id is not stored), then tries to use it to assert
+    against the usernameless endpoint. The credential lookup fails before
+    any crypto runs and the server collapses it to the generic error.
+    """
     auth_a = VirtualAuthenticator()
     _register(
         client,
@@ -224,63 +226,29 @@ def test_login_with_a_different_authenticator_fails(client: Client) -> None:
         authenticator=auth_a,
     )
 
-    # Try to log in with authenticator B (different keypair) — start_authentication
-    # will include only A's credential_id in allow_credentials, so B can't
-    # produce a matching response.
     auth_b = VirtualAuthenticator()
-    start = client.post(
-        "/webauthn/login/start/",
-        data=json.dumps({"email": "impostor@example.com"}),
-        content_type="application/json",
-    )
+    start = client.post("/webauthn/login/start-usernameless/")
     options = start.json()
 
-    # Mint an unrelated credential on auth_b and try signing with it.
-    payload = auth_b.create(
+    auth_b.create(
         rp_id=options["rpId"],
         challenge=_b64u_decode(options["challenge"]),
         user_id=b"fake-user-id",
         origin=_ORIGIN,
     )
-    # Force auth_b to "get" using its own (not A's) credential id.
     spoof = auth_b.get(
         rp_id=options["rpId"],
         challenge=_b64u_decode(options["challenge"]),
         origin=_ORIGIN,
     )
-    del payload  # only the get response is sent
 
     finish = client.post(
-        "/webauthn/login/finish/",
+        "/webauthn/login/finish-usernameless/",
         data=json.dumps(spoof),
         content_type="application/json",
     )
     assert finish.status_code == 400
-
-
-@pytest.mark.django_db
-def test_login_without_email_returns_email_required(client: Client) -> None:
-    response = client.post(
-        "/webauthn/login/start/",
-        data=json.dumps({}),
-        content_type="application/json",
-    )
-    assert response.status_code == 400
-    assert response.json()["error"] == "email_required"
-
-
-@pytest.mark.django_db
-def test_login_for_unknown_email_returns_generic_error(client: Client) -> None:
-    response = client.post(
-        "/webauthn/login/start/",
-        data=json.dumps({"email": "ghost@example.com"}),
-        content_type="application/json",
-    )
-    assert response.status_code == 400
-    # Generic neutral code (formerly no_credentials_available, which read
-    # like account-state confirmation even though the backend already
-    # treats "no user" and "user without passkey" the same way).
-    assert response.json()["error"] == "authentication_failed"
+    assert finish.json() == {"error": "authentication_failed"}
 
 
 # ---- Session + dashboard wiring ----
@@ -311,7 +279,7 @@ def test_logout_after_login_clears_session(client: Client) -> None:
         user_display_name="L",
         authenticator=authenticator,
     )
-    _login(client, email="loop@example.com", authenticator=authenticator)
+    _login(client, authenticator=authenticator)
 
     # Dashboard works.
     assert client.get("/super/dashboard/").status_code == 200

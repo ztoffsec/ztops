@@ -9,9 +9,11 @@ Five views:
   the registration options for `navigator.credentials.create()`.
 - `registration_finish` (POST): verifies the attestation, stores the
   credential, marks the enrollment token used.
-- `login_start` (POST): given an email, returns authentication options.
-  Does not leak whether the email exists.
-- `login_finish` (POST): verifies the assertion and creates a Django
+- `login_start_usernameless` (POST): returns authentication options
+  with no `allowCredentials` list, so the browser picks any resident
+  credential for this RP_ID. No email surface.
+- `login_finish_usernameless` (POST): verifies the assertion, resolves
+  identity from the credential id + userHandle, and creates a Django
   session bound to the authenticated user.
 """
 
@@ -31,15 +33,13 @@ from django_ratelimit.decorators import ratelimit
 from apps.audit.models import AuditAction
 from apps.audit.services import audit
 from core.security.crypto import verify_token
-from core.security.ratelimit_keys import client_ip, enroll_token, login_email
+from core.security.ratelimit_keys import client_ip, enroll_token
 
 from .models import EnrollmentToken
 from .services import (
     WebAuthnError,
-    finish_authentication,
     finish_authentication_usernameless,
     finish_registration,
-    start_authentication,
     start_authentication_usernameless,
     start_registration,
 )
@@ -133,73 +133,10 @@ def registration_finish(request: HttpRequest, token: str) -> JsonResponse:
     return JsonResponse({"ok": True, "credential_id": str(cred.id)})
 
 
-@csrf_protect
-@require_POST
-@ratelimit(key=client_ip, rate="5/m", block=True)
-@ratelimit(key=login_email, rate="3/m", block=True)
-def login_start(request: HttpRequest) -> JsonResponse:
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid_json"}, status=400)
-
-    email = (body.get("email") or "").strip()
-    if not email:
-        return JsonResponse({"error": "email_required"}, status=400)
-
-    try:
-        options = start_authentication(email, request)
-    except WebAuthnError:
-        # Do not distinguish "no such user" from "user has no credentials"
-        # from any other ceremony-start failure. The frontend renders a
-        # fixed generic message regardless; the neutral code keeps DevTools
-        # and server logs from accidentally hinting at the cause too.
-        return JsonResponse({"error": "authentication_failed"}, status=400)
-
-    return JsonResponse(options)
-
-
-@csrf_protect
-@require_POST
-@ratelimit(key=client_ip, rate="10/m", block=True)
-def login_finish(request: HttpRequest) -> JsonResponse:
-    try:
-        body = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "invalid_json"}, status=400)
-
-    try:
-        user = finish_authentication(request, body)
-    except WebAuthnError:
-        # Same generic response for every ceremony-finish failure
-        # (signature mismatch, expired challenge, replayed credential,
-        # tampered payload). The specifics stay in the WebAuthnError
-        # exception which propagates to the server log via Django's
-        # request handler; the JSON body never echoes them back.
-        return JsonResponse({"error": "authentication_failed"}, status=400)
-
-    # Mark which backend "authenticated" the user so django_login skips
-    # the authenticate() loop. The backend's own authenticate() returns
-    # None — login through WebAuthn is the only valid path.
-    user.backend = "apps.accounts.backends.WebAuthnAuthBackend"
-    django_login(request, user)
-
-    audit(
-        action=AuditAction.USER_SIGNED_IN,
-        actor=user,
-        request=request,
-        target_kind="user",
-        target_id=str(user.id),
-        target_label=user.email,
-    )
-    return JsonResponse({"ok": True, "redirect": "/super/dashboard/"})
-
-
 # --- usernameless (discoverable-credential) sign-in --------------------------
 #
-# Twin of login_start / login_finish, with the identity discovered by the
-# browser from a resident credential instead of supplied by the user as an
-# email. No request body for start (the challenge is server-generated,
+# The browser discovers the credential from its own store of resident keys for
+# this RP_ID. No request body for start (the challenge is server-generated,
 # session-bound); no email surface, no per-user rate-limit key.
 #
 # Security envelope:
@@ -208,8 +145,7 @@ def login_finish(request: HttpRequest) -> JsonResponse:
 #     there is nothing to enumerate.
 #   - login_finish_usernameless: POST + @csrf_protect + per-IP @ratelimit.
 #     Any WebAuthnError collapses to the generic `authentication_failed`,
-#     same shape as login_finish, so an attacker cannot tell which leg
-#     of the verify failed.
+#     so an attacker cannot tell which leg of the verify failed.
 
 
 @csrf_protect
@@ -224,9 +160,7 @@ def login_start_usernameless(request: HttpRequest) -> JsonResponse:
     try:
         options = start_authentication_usernameless(request)
     except WebAuthnError:
-        # The service raises if it cannot generate options for any reason.
-        # Same generic shape as login_start so the response surface is
-        # uniform across both flows.
+        # Any ceremony-start failure collapses to the same generic code.
         return JsonResponse({"error": "authentication_failed"}, status=400)
     return JsonResponse(options)
 

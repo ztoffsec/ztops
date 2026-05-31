@@ -1,13 +1,14 @@
 """Service layer for the WebAuthn ceremonies.
 
 Wraps the Duo `webauthn` library so that the view layer never deals with
-the protocol directly: views call into ``start_registration`` /
-``finish_registration`` / ``start_authentication`` /
-``finish_authentication`` and get back simple Python types.
+the protocol directly. The flow is usernameless / discoverable-credential
+only: the browser picks any resident credential for this RP_ID and the
+server resolves identity from the assertion's ``userHandle`` after the
+signature has been verified.
 
 Challenges are stored in the Django session (Redis-backed). The view
-layer never sees the raw challenge bytes — the ceremony is initiated
-and completed by passing the request through these helpers.
+layer never sees the raw challenge bytes; the ceremony is driven by
+passing the request through these helpers.
 """
 
 from __future__ import annotations
@@ -54,7 +55,6 @@ class WebAuthnError(Exception):
 _SESSION_REG_CHALLENGE = "webauthn_reg_challenge"
 _SESSION_REG_USER = "webauthn_reg_user"
 _SESSION_AUTH_CHALLENGE = "webauthn_auth_challenge"
-_SESSION_AUTH_USER = "webauthn_auth_user"
 
 
 # --- base64url helpers (sessions hold JSON, so bytes get encoded) -------------
@@ -156,119 +156,24 @@ def finish_registration(
     return cred
 
 
-# --- authentication ceremony -------------------------------------------------
-
-
-def start_authentication(email: str, request: HttpRequest) -> dict[str, Any]:
-    """Generate an authentication challenge for the user with ``email``.
-
-    Raises WebAuthnError if no usable credentials exist. Callers MUST
-    map that error to the same generic response as "wrong email" — do
-    not leak whether the email is registered.
-    """
-    try:
-        user = User.objects.get(email=email, is_active=True)
-    except User.DoesNotExist as exc:
-        msg = "no credentials available"
-        raise WebAuthnError(msg) from exc
-
-    cred_ids = list(user.credentials.values_list("credential_id", flat=True))
-    if not cred_ids:
-        msg = "no credentials available"
-        raise WebAuthnError(msg)
-
-    options = generate_authentication_options(
-        rp_id=settings.WEBAUTHN_RP_ID,
-        allow_credentials=[
-            PublicKeyCredentialDescriptor(id=bytes(cred_id)) for cred_id in cred_ids
-        ],
-        user_verification=UserVerificationRequirement.PREFERRED,
-    )
-
-    request.session[_SESSION_AUTH_CHALLENGE] = _b64u_encode(options.challenge)
-    request.session[_SESSION_AUTH_USER] = str(user.id)
-
-    return json.loads(options_to_json(options))
-
-
-def finish_authentication(request: HttpRequest, credential: dict[str, Any]) -> Any:
-    """Verify the assertion and update sign_count + last_used_at.
-
-    Returns the authenticated User on success.
-    """
-    challenge_b64 = request.session.pop(_SESSION_AUTH_CHALLENGE, None)
-    user_id = request.session.pop(_SESSION_AUTH_USER, None)
-    if not challenge_b64 or not user_id:
-        msg = "no authentication ceremony in progress"
-        raise WebAuthnError(msg)
-
-    challenge = _b64u_decode(challenge_b64)
-    credential_id = _b64u_decode(credential["id"])
-
-    try:
-        cred = WebAuthnCredential.objects.select_related("user").get(
-            user_id=user_id,
-            credential_id=credential_id,
-        )
-    except WebAuthnCredential.DoesNotExist as exc:
-        msg = "credential not registered to this user"
-        raise WebAuthnError(msg) from exc
-
-    try:
-        verified = verify_authentication_response(
-            credential=credential,
-            expected_challenge=challenge,
-            expected_rp_id=settings.WEBAUTHN_RP_ID,
-            expected_origin=settings.WEBAUTHN_RP_ORIGINS,
-            credential_public_key=bytes(cred.public_key),
-            credential_current_sign_count=cred.sign_count,
-        )
-    except Exception as exc:
-        msg = f"authentication verification failed: {exc}"
-        raise WebAuthnError(msg) from exc
-
-    # Sign-count clone detection: an authenticator should never present
-    # a count <= our stored value. The lib's verify already checks this
-    # for non-zero counters, but be explicit.
-    if cred.sign_count > 0 and verified.new_sign_count <= cred.sign_count:
-        msg = "possible credential clone detected (sign_count regression)"
-        raise WebAuthnError(msg)
-
-    cred.sign_count = verified.new_sign_count
-    cred.last_used_at = timezone.now()
-    cred.save(update_fields=["sign_count", "last_used_at"])
-
-    return cred.user
-
-
-# --- usernameless / discoverable-credential authentication --------------------
+# --- authentication ceremony (usernameless / discoverable credentials) ------
 #
-# The email-keyed flow above identifies the user before the ceremony starts and
-# the server returns the user's credential ids in `allow_credentials`. That
-# means the sign-in page must accept an email, which is the surface the
-# friend's concern targets: an attacker can probe email values to learn which
-# accounts exist (mitigated today by uniform error wording + tighter rate
-# limits, but the input field still exists).
-#
-# The usernameless flow below removes the email surface entirely. The server
-# starts the ceremony with NO knowledge of the user. The browser picks any
-# resident credential for this RP_ID, runs the assertion, and returns the
-# `userHandle` (the user id we wrote into the credential at registration) plus
-# the credential id. Identity is resolved on the server only after the
-# signature has been verified against the public key stored for that
-# credential id. There is no per-user state to leak: the input is just a
-# random challenge bound to the session.
+# The server starts the ceremony with no knowledge of who is signing in.
+# The browser picks any resident credential for this RP_ID, runs the
+# assertion, and returns the ``userHandle`` (the user id we wrote into
+# the credential at registration) plus the credential id. Identity is
+# resolved on the server only after the signature has been verified
+# against the public key stored for that credential id. There is no
+# per-user state in the request body, so there is nothing to enumerate.
 #
 # Security properties enforced here:
-#   - empty allow_credentials list -> browser-side discovery
-#   - user_verification REQUIRED -> stolen device cannot sign in without PIN
+#   - empty allow_credentials -> browser-side credential discovery
+#   - user_verification REQUIRED on both start and verify -> a stolen
+#     device cannot sign in without PIN / biometric
 #   - challenge is single-use, pop()'d from the session before verify
-#   - credential lookup is by credential_id alone; user resolved via the FK
-#   - the assertion's userHandle MUST match the credential's user id, both
-#     as a sanity check (defends against an authenticator that mis-reports
-#     its userHandle) and to fail closed if the data ever drifts
-#   - the new ceremony key is separate from the email-keyed key, so a
-#     ceremony started one way cannot be finished the other way
+#   - credential lookup is by credential_id alone (globally unique)
+#   - the assertion's userHandle MUST match the credential's user id,
+#     a structural sanity check that fails closed under data drift
 
 
 def start_authentication_usernameless(request: HttpRequest) -> dict[str, Any]:
@@ -290,11 +195,6 @@ def start_authentication_usernameless(request: HttpRequest) -> dict[str, Any]:
     )
 
     request.session[_SESSION_AUTH_CHALLENGE] = _b64u_encode(options.challenge)
-    # No user id is bound to the session yet. Make sure any stale one is
-    # cleared so a finish call cannot accidentally pick up the wrong path
-    # (defense against a confused-deputy bug between the two flows).
-    request.session.pop(_SESSION_AUTH_USER, None)
-
     return json.loads(options_to_json(options))
 
 
@@ -313,13 +213,6 @@ def finish_authentication_usernameless(
     challenge_b64 = request.session.pop(_SESSION_AUTH_CHALLENGE, None)
     if not challenge_b64:
         msg = "no authentication ceremony in progress"
-        raise WebAuthnError(msg)
-
-    # The usernameless flow must NEVER have a user pinned to the session.
-    # If one is present here it means a parallel email-keyed start happened
-    # in the same session; refuse the finish to keep the flows isolated.
-    if request.session.pop(_SESSION_AUTH_USER, None):
-        msg = "ceremony mode mismatch"
         raise WebAuthnError(msg)
 
     challenge = _b64u_decode(challenge_b64)

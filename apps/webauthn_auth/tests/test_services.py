@@ -20,10 +20,8 @@ from apps.accounts.models import User
 from apps.webauthn_auth.models import WebAuthnCredential
 from apps.webauthn_auth.services import (
     WebAuthnError,
-    finish_authentication,
     finish_authentication_usernameless,
     finish_registration,
-    start_authentication,
     start_authentication_usernameless,
     start_registration,
 )
@@ -117,113 +115,7 @@ def test_finish_registration_with_lib_failure_raises_clean_error(rf: RequestFact
         finish_registration(request, {})
 
 
-# ---- start_authentication ----
-
-
-@pytest.mark.django_db
-def test_start_authentication_for_unknown_user_raises(rf: RequestFactory) -> None:
-    request = _request_with_session(rf)
-    with pytest.raises(WebAuthnError, match="no credentials"):
-        start_authentication("ghost@example.com", request)
-
-
-@pytest.mark.django_db
-def test_start_authentication_for_user_without_credentials_raises(rf: RequestFactory) -> None:
-    User.objects.create_user(email="empty@example.com", display_name="Empty")
-    request = _request_with_session(rf)
-    with pytest.raises(WebAuthnError, match="no credentials"):
-        start_authentication("empty@example.com", request)
-
-
-@pytest.mark.django_db
-def test_start_authentication_for_user_with_creds_stores_challenge(rf: RequestFactory) -> None:
-    user = User.objects.create_user(email="auth@example.com", display_name="Auth")
-    WebAuthnCredential.objects.create(user=user, credential_id=b"k", public_key=b"p")
-    request = _request_with_session(rf)
-
-    options = start_authentication("auth@example.com", request)
-
-    assert "challenge" in options
-    assert request.session["webauthn_auth_user"] == str(user.id)
-
-
-# ---- finish_authentication ----
-
-
-@pytest.mark.django_db
-def test_finish_authentication_updates_sign_count_and_returns_user(rf: RequestFactory) -> None:
-    user = User.objects.create_user(email="ok@example.com", display_name="OK")
-    cred = WebAuthnCredential.objects.create(
-        user=user,
-        credential_id=b"valid-id",
-        public_key=b"pk",
-        sign_count=5,
-    )
-    request = _request_with_session(rf)
-    request.session["webauthn_auth_user"] = str(user.id)
-    request.session["webauthn_auth_challenge"] = "Y2hhbGxlbmdl"
-
-    fake_verified = MagicMock()
-    fake_verified.new_sign_count = 6
-
-    # `id` field of the response is base64url('valid-id') = "dmFsaWQtaWQ"
-    with patch(
-        "apps.webauthn_auth.services.verify_authentication_response",
-        return_value=fake_verified,
-    ):
-        result_user = finish_authentication(request, {"id": "dmFsaWQtaWQ"})
-
-    assert result_user.id == user.id
-    cred.refresh_from_db()
-    assert cred.sign_count == 6
-    assert cred.last_used_at is not None
-
-
-@pytest.mark.django_db
-def test_finish_authentication_detects_sign_count_regression(rf: RequestFactory) -> None:
-    user = User.objects.create_user(email="clone@example.com", display_name="Clone")
-    WebAuthnCredential.objects.create(
-        user=user,
-        credential_id=b"cl",
-        public_key=b"pk",
-        sign_count=10,
-    )
-    request = _request_with_session(rf)
-    request.session["webauthn_auth_user"] = str(user.id)
-    request.session["webauthn_auth_challenge"] = "Y2hhbGxlbmdl"
-
-    fake_verified = MagicMock()
-    fake_verified.new_sign_count = 9  # regressed!
-
-    with (
-        patch(
-            "apps.webauthn_auth.services.verify_authentication_response",
-            return_value=fake_verified,
-        ),
-        pytest.raises(WebAuthnError, match="clone"),
-    ):
-        finish_authentication(request, {"id": "Y2w"})  # base64url('cl')
-
-
-@pytest.mark.django_db
-def test_finish_authentication_without_session_state_raises(rf: RequestFactory) -> None:
-    request = _request_with_session(rf)
-    with pytest.raises(WebAuthnError, match="no authentication"):
-        finish_authentication(request, {"id": "anything"})
-
-
-@pytest.mark.django_db
-def test_finish_authentication_with_unknown_credential_raises(rf: RequestFactory) -> None:
-    user = User.objects.create_user(email="nocred@example.com", display_name="NC")
-    request = _request_with_session(rf)
-    request.session["webauthn_auth_user"] = str(user.id)
-    request.session["webauthn_auth_challenge"] = "Y2hhbGxlbmdl"
-
-    with pytest.raises(WebAuthnError, match="not registered"):
-        finish_authentication(request, {"id": "dW5rbm93bg"})  # b'unknown'
-
-
-# ---- usernameless flow ----------------------------------------------------
+# ---- authentication (usernameless / discoverable credentials) -------------
 
 
 def _b64u(s: str | bytes) -> str:
@@ -232,13 +124,8 @@ def _b64u(s: str | bytes) -> str:
 
 
 @pytest.mark.django_db
-def test_start_authentication_usernameless_clears_user_session_key(rf: RequestFactory) -> None:
-    """An email-keyed ceremony in flight must not bleed into the usernameless
-    start. The user-key is cleared so finish_authentication_usernameless
-    cannot accidentally pick up a stale identity.
-    """
+def test_start_authentication_usernameless_stores_only_a_challenge(rf: RequestFactory) -> None:
     request = _request_with_session(rf)
-    request.session["webauthn_auth_user"] = "stale-id"  # pretend prior flow
 
     options = start_authentication_usernameless(request)
 
@@ -246,7 +133,6 @@ def test_start_authentication_usernameless_clears_user_session_key(rf: RequestFa
     # No allow-credentials list: discoverable-credential discovery on the client.
     assert options.get("allowCredentials") in (None, [])
     assert request.session["webauthn_auth_challenge"]
-    assert "webauthn_auth_user" not in request.session
 
 
 @pytest.mark.django_db
@@ -279,32 +165,6 @@ def test_finish_authentication_usernameless_happy_path(rf: RequestFactory) -> No
     assert result.id == user.id
     cred.refresh_from_db()
     assert cred.sign_count == 3
-
-
-@pytest.mark.django_db
-def test_finish_usernameless_rejects_mode_mismatch_session(rf: RequestFactory) -> None:
-    """If both webauthn_auth_user AND webauthn_auth_challenge are present,
-    refuse. That state means an email-keyed ceremony started, and finishing
-    it via the usernameless path would skip the per-user binding."""
-    user = User.objects.create_user(email="mm@example.com", display_name="MM")
-    WebAuthnCredential.objects.create(
-        user=user,
-        credential_id=b"mm-cred",
-        public_key=b"pk",
-        sign_count=0,
-    )
-    request = _request_with_session(rf)
-    request.session["webauthn_auth_challenge"] = _b64u(b"ch")
-    request.session["webauthn_auth_user"] = str(user.id)  # email-keyed start
-
-    with pytest.raises(WebAuthnError, match="mode mismatch"):
-        finish_authentication_usernameless(
-            request,
-            {
-                "id": _b64u(b"mm-cred"),
-                "response": {"userHandle": _b64u(str(user.id))},
-            },
-        )
 
 
 @pytest.mark.django_db
