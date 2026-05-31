@@ -37,8 +37,10 @@ from .models import EnrollmentToken
 from .services import (
     WebAuthnError,
     finish_authentication,
+    finish_authentication_usernameless,
     finish_registration,
     start_authentication,
+    start_authentication_usernameless,
     start_registration,
 )
 
@@ -179,6 +181,80 @@ def login_finish(request: HttpRequest) -> JsonResponse:
     # Mark which backend "authenticated" the user so django_login skips
     # the authenticate() loop. The backend's own authenticate() returns
     # None — login through WebAuthn is the only valid path.
+    user.backend = "apps.accounts.backends.WebAuthnAuthBackend"
+    django_login(request, user)
+
+    audit(
+        action=AuditAction.USER_SIGNED_IN,
+        actor=user,
+        request=request,
+        target_kind="user",
+        target_id=str(user.id),
+        target_label=user.email,
+    )
+    return JsonResponse({"ok": True, "redirect": "/super/dashboard/"})
+
+
+# --- usernameless (discoverable-credential) sign-in --------------------------
+#
+# Twin of login_start / login_finish, with the identity discovered by the
+# browser from a resident credential instead of supplied by the user as an
+# email. No request body for start (the challenge is server-generated,
+# session-bound); no email surface, no per-user rate-limit key.
+#
+# Security envelope:
+#   - login_start_usernameless: POST + @csrf_protect + per-IP @ratelimit.
+#     No body parsed; nothing in the request can route the lookup, so
+#     there is nothing to enumerate.
+#   - login_finish_usernameless: POST + @csrf_protect + per-IP @ratelimit.
+#     Any WebAuthnError collapses to the generic `authentication_failed`,
+#     same shape as login_finish, so an attacker cannot tell which leg
+#     of the verify failed.
+
+
+@csrf_protect
+@require_POST
+@ratelimit(key=client_ip, rate="5/m", block=True)
+def login_start_usernameless(request: HttpRequest) -> JsonResponse:
+    """Begin a usernameless authentication ceremony.
+
+    Returns the public-key options the browser feeds to
+    ``navigator.credentials.get()``. No email, no body required.
+    """
+    try:
+        options = start_authentication_usernameless(request)
+    except WebAuthnError:
+        # The service raises if it cannot generate options for any reason.
+        # Same generic shape as login_start so the response surface is
+        # uniform across both flows.
+        return JsonResponse({"error": "authentication_failed"}, status=400)
+    return JsonResponse(options)
+
+
+@csrf_protect
+@require_POST
+@ratelimit(key=client_ip, rate="10/m", block=True)
+def login_finish_usernameless(request: HttpRequest) -> JsonResponse:
+    """Finish a usernameless authentication ceremony.
+
+    The body carries the assertion plus the discovered ``userHandle``.
+    Identity is resolved on the server side by the credential id, then
+    cross-checked against the userHandle and the cryptographic signature
+    (see ``finish_authentication_usernameless``).
+    """
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid_json"}, status=400)
+
+    try:
+        user = finish_authentication_usernameless(request, body)
+    except WebAuthnError:
+        # Every ceremony-finish failure collapses to the same code so
+        # DevTools / logs never reveal the reason (no-such-credential,
+        # tampered userHandle, signature mismatch, replay, clone).
+        return JsonResponse({"error": "authentication_failed"}, status=400)
+
     user.backend = "apps.accounts.backends.WebAuthnAuthBackend"
     django_login(request, user)
 

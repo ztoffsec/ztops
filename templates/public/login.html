@@ -17,6 +17,28 @@
     .login-hero .logo-dark-mode { display: inline; }
   }
   main.narrow .card { max-width: 480px; margin-left: auto; margin-right: auto; }
+  .login-primary {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+  }
+  .login-secondary-link {
+    display: block;
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 100%;
+    padding: 0.5rem;
+  }
+  .login-secondary-link:hover { color: var(--text); }
+  [hidden] { display: none !important; }
 </style>
 {% endblock %}
 
@@ -30,24 +52,43 @@
   <h1>Sign in</h1>
   <p class="meta">Authenticate with the passkey registered for your account.</p>
 
-  <form id="login-form" autocomplete="on">
+  {# Primary path: usernameless. The browser picks any resident passkey for #}
+  {# this site, no email surface, no enumeration window.                    #}
+  <div id="passkey-pane">
+    <button type="button" id="passkey-btn" class="login-primary">Sign in with passkey</button>
+    <button type="button" id="show-email" class="login-secondary-link">
+      Use email and passkey instead
+    </button>
+  </div>
+
+  {# Fallback path: for users whose passkey is not discoverable (some       #}
+  {# hardware tokens registered before residentKey became required). Same  #}
+  {# ceremony as before, kept verbatim so nothing about that flow changes. #}
+  <form id="login-form" autocomplete="on" hidden>
     <div class="field">
       <label for="email">Email</label>
-      <input type="email" id="email" name="email" required autocomplete="username webauthn" autofocus>
+      <input type="email" id="email" name="email" required autocomplete="username webauthn">
     </div>
-    <button type="submit" id="submit-btn">Sign in with passkey</button>
+    <button type="submit" id="submit-btn">Sign in</button>
+    <button type="button" id="show-passkey" class="login-secondary-link">
+      Back to passkey sign-in
+    </button>
   </form>
 
-  <output id="status" class="status"></output>
+  <output id="status" class="status" aria-live="polite"></output>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script nonce="{{ request.csp_nonce }}">
 (() => {
+  const passkeyPane = document.getElementById("passkey-pane");
+  const passkeyBtn = document.getElementById("passkey-btn");
+  const showEmailBtn = document.getElementById("show-email");
   const form = document.getElementById("login-form");
+  const showPasskeyBtn = document.getElementById("show-passkey");
   const status = document.getElementById("status");
-  const btn = document.getElementById("submit-btn");
+  const submitBtn = document.getElementById("submit-btn");
 
   function show(text, kind) {
     status.textContent = text;
@@ -79,7 +120,7 @@
         "Content-Type": "application/json",
         "X-CSRFToken": getCookie("csrftoken") || "",
       },
-      body: JSON.stringify(body),
+      body: body === undefined ? "{}" : JSON.stringify(body),
       credentials: "same-origin",
     });
     if (!res.ok) {
@@ -89,55 +130,113 @@
     return res.json();
   }
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    btn.disabled = true;
-    show("Starting sign-in...");
+  function buildAssertionPayload(credential) {
+    return {
+      id: credential.id,
+      rawId: bytesToB64u(credential.rawId),
+      type: credential.type,
+      response: {
+        clientDataJSON: bytesToB64u(credential.response.clientDataJSON),
+        authenticatorData: bytesToB64u(credential.response.authenticatorData),
+        signature: bytesToB64u(credential.response.signature),
+        userHandle: credential.response.userHandle
+          ? bytesToB64u(credential.response.userHandle)
+          : null,
+      },
+      clientExtensionResults: credential.getClientExtensionResults
+        ? credential.getClientExtensionResults()
+        : {},
+    };
+  }
 
-    try {
-      const email = document.getElementById("email").value.trim();
-      const options = await postJSON("/webauthn/login/start/", { email });
-
-      options.challenge = b64uToBytes(options.challenge);
-      if (options.allowCredentials) {
-        options.allowCredentials = options.allowCredentials.map((c) => ({
-          ...c,
-          id: b64uToBytes(c.id),
-        }));
-      }
-
-      show("Confirm with your authenticator (Touch ID / YubiKey / phone)...");
-      const credential = await navigator.credentials.get({ publicKey: options });
-
-      const payload = {
-        id: credential.id,
-        rawId: bytesToB64u(credential.rawId),
-        type: credential.type,
-        response: {
-          clientDataJSON: bytesToB64u(credential.response.clientDataJSON),
-          authenticatorData: bytesToB64u(credential.response.authenticatorData),
-          signature: bytesToB64u(credential.response.signature),
-          userHandle: credential.response.userHandle
-            ? bytesToB64u(credential.response.userHandle)
-            : null,
-        },
-        clientExtensionResults: credential.getClientExtensionResults
-          ? credential.getClientExtensionResults()
-          : {},
-      };
-
-      const result = await postJSON("/webauthn/login/finish/", payload);
-      show("Signed in. Redirecting...", "success");
-      window.location.href = result.redirect || "/super/dashboard/";
-    } catch (err) {
-      // Always surface the same generic string so the page never reveals
-      // whether the email exists, has a passkey, or hit a different error.
-      // The server-side error code is still visible to the developer in
-      // DevTools / logs for debugging.
-      show("Sign-in failed. Try again.", "error");
-      btn.disabled = false;
+  function decodeOptions(options) {
+    options.challenge = b64uToBytes(options.challenge);
+    if (Array.isArray(options.allowCredentials)) {
+      options.allowCredentials = options.allowCredentials.map((c) => ({
+        ...c,
+        id: b64uToBytes(c.id),
+      }));
     }
+    return options;
+  }
+
+  // ---- usernameless (primary) -----------------------------------------------
+
+  async function runUsernameless() {
+    passkeyBtn.disabled = true;
+    showEmailBtn.disabled = true;
+    show("Confirm with your authenticator…");
+    try {
+      const options = await postJSON("/webauthn/login/start-usernameless/", undefined);
+      const credential = await navigator.credentials.get({
+        publicKey: decodeOptions(options),
+      });
+      const result = await postJSON(
+        "/webauthn/login/finish-usernameless/",
+        buildAssertionPayload(credential),
+      );
+      show("Signed in. Redirecting…", "success");
+      window.location.href = result.redirect || "/super/dashboard/";
+    } catch (_err) {
+      // Generic message for every failure (no passkey selected, ceremony
+      // cancelled, server refused, replay, signature mismatch). The server
+      // never echoes specifics either; both layers stay quiet.
+      show("Sign-in failed. Try again.", "error");
+      passkeyBtn.disabled = false;
+      showEmailBtn.disabled = false;
+    }
+  }
+
+  passkeyBtn.addEventListener("click", runUsernameless);
+
+  // ---- email-keyed (fallback) ----------------------------------------------
+
+  async function runEmailKeyed(email) {
+    submitBtn.disabled = true;
+    showPasskeyBtn.disabled = true;
+    show("Confirm with your authenticator…");
+    try {
+      const options = await postJSON("/webauthn/login/start/", { email });
+      const credential = await navigator.credentials.get({
+        publicKey: decodeOptions(options),
+      });
+      const result = await postJSON(
+        "/webauthn/login/finish/",
+        buildAssertionPayload(credential),
+      );
+      show("Signed in. Redirecting…", "success");
+      window.location.href = result.redirect || "/super/dashboard/";
+    } catch (_err) {
+      show("Sign-in failed. Try again.", "error");
+      submitBtn.disabled = false;
+      showPasskeyBtn.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    runEmailKeyed(document.getElementById("email").value.trim());
   });
+
+  // ---- pane toggling -------------------------------------------------------
+
+  function showPasskeyPane() {
+    form.hidden = true;
+    passkeyPane.hidden = false;
+    status.textContent = "";
+    status.className = "status";
+    passkeyBtn.focus();
+  }
+  function showEmailPane() {
+    passkeyPane.hidden = true;
+    form.hidden = false;
+    status.textContent = "";
+    status.className = "status";
+    document.getElementById("email").focus();
+  }
+
+  showEmailBtn.addEventListener("click", showEmailPane);
+  showPasskeyBtn.addEventListener("click", showPasskeyPane);
 })();
 </script>
 {% endblock %}
