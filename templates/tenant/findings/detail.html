@@ -444,6 +444,10 @@
         {% with safe_ref=ref|safe_external_url %}
         <li class="mono">
           {% if safe_ref %}
+          {# safe_ref is the output of |safe_external_url, which returns the #}
+          {# input only when its scheme is in {http, https}; anything else   #}
+          {# collapses to '' and the {% if %} above takes the else branch.   #}
+          {# nosemgrep: generic.html-templates.security.var-in-href.var-in-href #}
           <a href="{{ safe_ref }}" rel="noopener nofollow noreferrer" target="_blank">{{ ref }}</a>
           {% else %}
           {# Defence in depth: form validation rejects non-http(s) on save, #}
