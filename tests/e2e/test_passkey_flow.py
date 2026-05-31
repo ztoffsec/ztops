@@ -270,14 +270,17 @@ def test_login_without_email_returns_email_required(client: Client) -> None:
 
 
 @pytest.mark.django_db
-def test_login_for_unknown_email_returns_generic_no_credentials(client: Client) -> None:
+def test_login_for_unknown_email_returns_generic_error(client: Client) -> None:
     response = client.post(
         "/webauthn/login/start/",
         data=json.dumps({"email": "ghost@example.com"}),
         content_type="application/json",
     )
     assert response.status_code == 400
-    assert response.json()["error"] == "no_credentials_available"
+    # Generic neutral code (formerly no_credentials_available, which read
+    # like account-state confirmation even though the backend already
+    # treats "no user" and "user without passkey" the same way).
+    assert response.json()["error"] == "authentication_failed"
 
 
 # ---- Session + dashboard wiring ----

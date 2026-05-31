@@ -148,8 +148,11 @@ def login_start(request: HttpRequest) -> JsonResponse:
     try:
         options = start_authentication(email, request)
     except WebAuthnError:
-        # Do not distinguish "no such user" from "user has no credentials".
-        return JsonResponse({"error": "no_credentials_available"}, status=400)
+        # Do not distinguish "no such user" from "user has no credentials"
+        # from any other ceremony-start failure. The frontend renders a
+        # fixed generic message regardless; the neutral code keeps DevTools
+        # and server logs from accidentally hinting at the cause too.
+        return JsonResponse({"error": "authentication_failed"}, status=400)
 
     return JsonResponse(options)
 
@@ -165,8 +168,13 @@ def login_finish(request: HttpRequest) -> JsonResponse:
 
     try:
         user = finish_authentication(request, body)
-    except WebAuthnError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+    except WebAuthnError:
+        # Same generic response for every ceremony-finish failure
+        # (signature mismatch, expired challenge, replayed credential,
+        # tampered payload). The specifics stay in the WebAuthnError
+        # exception which propagates to the server log via Django's
+        # request handler; the JSON body never echoes them back.
+        return JsonResponse({"error": "authentication_failed"}, status=400)
 
     # Mark which backend "authenticated" the user so django_login skips
     # the authenticate() loop. The backend's own authenticate() returns
