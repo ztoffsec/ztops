@@ -14,4 +14,14 @@ urlpatterns = [
     path("register/finish/<str:token>/", views.registration_finish, name="register_finish"),
     path("login/start/", views.login_start, name="login_start"),
     path("login/finish/", views.login_finish, name="login_finish"),
+    path(
+        "login/start-usernameless/",
+        views.login_start_usernameless,
+        name="login_start_usernameless",
+    ),
+    path(
+        "login/finish-usernameless/",
+        views.login_finish_usernameless,
+        name="login_finish_usernameless",
+    ),
 ]
