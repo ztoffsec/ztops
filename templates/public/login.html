@@ -130,7 +130,11 @@
       show("Signed in. Redirecting...", "success");
       window.location.href = result.redirect || "/super/dashboard/";
     } catch (err) {
-      show("Error: " + err.message, "error");
+      // Always surface the same generic string so the page never reveals
+      // whether the email exists, has a passkey, or hit a different error.
+      // The server-side error code is still visible to the developer in
+      // DevTools / logs for debugging.
+      show("Sign-in failed. Try again.", "error");
       btn.disabled = false;
     }
   });

@@ -93,7 +93,25 @@ def test_login_start_does_not_leak_user_existence(client: Client) -> None:
             content_type="application/json",
         )
         assert response.status_code == 400
-        assert response.json() == {"error": "no_credentials_available"}
+        assert response.json() == {"error": "authentication_failed"}
+
+
+@pytest.mark.django_db
+def test_login_finish_does_not_echo_exception_message(client: Client) -> None:
+    """A failed verification must not leak the specific WebAuthn cause.
+
+    Before the fix the view returned `{"error": str(exc)}` so the client
+    saw the underlying message ("signature mismatch", "expired challenge",
+    "credential not found"). Now every failure collapses to the same
+    generic code so DevTools / logs don't enumerate causes.
+    """
+    response = client.post(
+        "/webauthn/login/finish/",
+        data=json.dumps({"id": "x", "response": {}}),
+        content_type="application/json",
+    )
+    assert response.status_code == 400
+    assert response.json() == {"error": "authentication_failed"}
 
 
 @pytest.mark.django_db
