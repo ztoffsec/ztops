@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load safe_url %}
 
 {% block title %}{{ finding.internal_id }} — ZTOps{% endblock %}
 
@@ -440,8 +441,19 @@
     {% if finding.references %}
     <ul class="references">
       {% for ref in finding.references %}
-      <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
-      <li class="mono"><a href="{{ ref }}" rel="noopener nofollow noreferrer" target="_blank">{{ ref }}</a></li>
+        {% with safe_ref=ref|safe_external_url %}
+        <li class="mono">
+          {% if safe_ref %}
+          <a href="{{ safe_ref }}" rel="noopener nofollow noreferrer" target="_blank">{{ ref }}</a>
+          {% else %}
+          {# Defence in depth: form validation rejects non-http(s) on save, #}
+          {# but if a stale reference slips through (raw SQL, restored      #}
+          {# backup, future bug) we render plain text, never a clickable    #}
+          {# javascript: / data: / file: link.                              #}
+          <span title="Reference scheme not allowed">{{ ref }}</span>
+          {% endif %}
+        </li>
+        {% endwith %}
       {% endfor %}
     </ul>
     {% else %}
