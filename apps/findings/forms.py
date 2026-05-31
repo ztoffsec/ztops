@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from django import forms
 
 from .models import Finding, FindingNote
+
+# Schemes allowed in Finding.references. Anything else (javascript:, data:,
+# file:, vbscript:, custom URI schemes) would render as a clickable link in
+# detail.html and a javascript: link executes in the victim's session, so
+# the form refuses to save it. Mirrors the bleach allowlist for markdown.
+_REFERENCE_ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 class FindingForm(forms.ModelForm):
@@ -81,6 +89,40 @@ class FindingForm(forms.ModelForm):
                 },
             ),
         }
+
+    def clean_references(self) -> list[str]:
+        """Reject references that aren't http/https URLs.
+
+        The chip input lets the user type any string. Without this, a
+        reference like `javascript:alert(document.cookie)` lands in the
+        JSONField and detail.html renders it inside an <a href>, executing
+        in the clicker's session. Strip whitespace, drop empties, and
+        require a valid http/https scheme on every survivor.
+        """
+        raw = self.cleaned_data.get("references") or []
+        if not isinstance(raw, list):
+            msg = "References must be a list of URLs."
+            raise forms.ValidationError(msg)
+        cleaned: list[str] = []
+        for entry in raw:
+            if not isinstance(entry, str):
+                msg = "References must be a list of URL strings."
+                raise forms.ValidationError(msg)
+            value = entry.strip()
+            if not value:
+                continue
+            parsed = urlparse(value)
+            if parsed.scheme.lower() not in _REFERENCE_ALLOWED_SCHEMES:
+                msg = (
+                    f"Reference {value!r} must start with http:// or https://. "
+                    "Other URL schemes are not allowed."
+                )
+                raise forms.ValidationError(msg)
+            if not parsed.netloc:
+                msg = f"Reference {value!r} is missing a host."
+                raise forms.ValidationError(msg)
+            cleaned.append(value)
+        return cleaned
 
 
 class FindingNoteForm(forms.ModelForm):
