@@ -24,21 +24,6 @@
     font-weight: 600;
     margin-top: 0.5rem;
   }
-  .login-secondary-link {
-    display: block;
-    text-align: center;
-    margin-top: 1rem;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-    text-decoration: underline;
-    cursor: pointer;
-    background: none;
-    border: none;
-    width: 100%;
-    padding: 0.5rem;
-  }
-  .login-secondary-link:hover { color: var(--text); }
-  [hidden] { display: none !important; }
 </style>
 {% endblock %}
 
@@ -52,28 +37,7 @@
   <h1>Sign in</h1>
   <p class="meta">Authenticate with the passkey registered for your account.</p>
 
-  {# Primary path: usernameless. The browser picks any resident passkey for #}
-  {# this site, no email surface, no enumeration window.                    #}
-  <div id="passkey-pane">
-    <button type="button" id="passkey-btn" class="login-primary">Sign in with passkey</button>
-    <button type="button" id="show-email" class="login-secondary-link">
-      Use email and passkey instead
-    </button>
-  </div>
-
-  {# Fallback path: for users whose passkey is not discoverable (some       #}
-  {# hardware tokens registered before residentKey became required). Same  #}
-  {# ceremony as before, kept verbatim so nothing about that flow changes. #}
-  <form id="login-form" autocomplete="on" hidden>
-    <div class="field">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" required autocomplete="username webauthn">
-    </div>
-    <button type="submit" id="submit-btn">Sign in</button>
-    <button type="button" id="show-passkey" class="login-secondary-link">
-      Back to passkey sign-in
-    </button>
-  </form>
+  <button type="button" id="passkey-btn" class="login-primary">Sign in with passkey</button>
 
   <output id="status" class="status" aria-live="polite"></output>
 </div>
@@ -82,13 +46,8 @@
 {% block scripts %}
 <script nonce="{{ request.csp_nonce }}">
 (() => {
-  const passkeyPane = document.getElementById("passkey-pane");
   const passkeyBtn = document.getElementById("passkey-btn");
-  const showEmailBtn = document.getElementById("show-email");
-  const form = document.getElementById("login-form");
-  const showPasskeyBtn = document.getElementById("show-passkey");
   const status = document.getElementById("status");
-  const submitBtn = document.getElementById("submit-btn");
 
   function show(text, kind) {
     status.textContent = text;
@@ -130,6 +89,17 @@
     return res.json();
   }
 
+  function decodeOptions(options) {
+    options.challenge = b64uToBytes(options.challenge);
+    if (Array.isArray(options.allowCredentials)) {
+      options.allowCredentials = options.allowCredentials.map((c) => ({
+        ...c,
+        id: b64uToBytes(c.id),
+      }));
+    }
+    return options;
+  }
+
   function buildAssertionPayload(credential) {
     return {
       id: credential.id,
@@ -149,22 +119,8 @@
     };
   }
 
-  function decodeOptions(options) {
-    options.challenge = b64uToBytes(options.challenge);
-    if (Array.isArray(options.allowCredentials)) {
-      options.allowCredentials = options.allowCredentials.map((c) => ({
-        ...c,
-        id: b64uToBytes(c.id),
-      }));
-    }
-    return options;
-  }
-
-  // ---- usernameless (primary) -----------------------------------------------
-
-  async function runUsernameless() {
+  async function runSignIn() {
     passkeyBtn.disabled = true;
-    showEmailBtn.disabled = true;
     show("Confirm with your authenticator…");
     try {
       const options = await postJSON("/webauthn/login/start-usernameless/", undefined);
@@ -179,64 +135,13 @@
       window.location.href = result.redirect || "/super/dashboard/";
     } catch (_err) {
       // Generic message for every failure (no passkey selected, ceremony
-      // cancelled, server refused, replay, signature mismatch). The server
-      // never echoes specifics either; both layers stay quiet.
+      // cancelled, server refused, replay, signature mismatch).
       show("Sign-in failed. Try again.", "error");
       passkeyBtn.disabled = false;
-      showEmailBtn.disabled = false;
     }
   }
 
-  passkeyBtn.addEventListener("click", runUsernameless);
-
-  // ---- email-keyed (fallback) ----------------------------------------------
-
-  async function runEmailKeyed(email) {
-    submitBtn.disabled = true;
-    showPasskeyBtn.disabled = true;
-    show("Confirm with your authenticator…");
-    try {
-      const options = await postJSON("/webauthn/login/start/", { email });
-      const credential = await navigator.credentials.get({
-        publicKey: decodeOptions(options),
-      });
-      const result = await postJSON(
-        "/webauthn/login/finish/",
-        buildAssertionPayload(credential),
-      );
-      show("Signed in. Redirecting…", "success");
-      window.location.href = result.redirect || "/super/dashboard/";
-    } catch (_err) {
-      show("Sign-in failed. Try again.", "error");
-      submitBtn.disabled = false;
-      showPasskeyBtn.disabled = false;
-    }
-  }
-
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    runEmailKeyed(document.getElementById("email").value.trim());
-  });
-
-  // ---- pane toggling -------------------------------------------------------
-
-  function showPasskeyPane() {
-    form.hidden = true;
-    passkeyPane.hidden = false;
-    status.textContent = "";
-    status.className = "status";
-    passkeyBtn.focus();
-  }
-  function showEmailPane() {
-    passkeyPane.hidden = true;
-    form.hidden = false;
-    status.textContent = "";
-    status.className = "status";
-    document.getElementById("email").focus();
-  }
-
-  showEmailBtn.addEventListener("click", showEmailPane);
-  showPasskeyBtn.addEventListener("click", showPasskeyPane);
+  passkeyBtn.addEventListener("click", runSignIn);
 })();
 </script>
 {% endblock %}

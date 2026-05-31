@@ -68,6 +68,10 @@ class _Credential:
     credential_id: bytes
     private_key: ec.EllipticCurvePrivateKey
     sign_count: int = 0
+    # The user id we registered against. Stored like a resident-key so
+    # `.get()` can echo it back as `userHandle` (the usernameless flow
+    # binds identity through this field).
+    user_id: bytes = b""
 
 
 @dataclass
@@ -91,7 +95,7 @@ class VirtualAuthenticator:
         *,
         rp_id: str,
         challenge: bytes,
-        user_id: bytes,  # noqa: ARG002 — accepted for parity with the real ceremony
+        user_id: bytes,
         origin: str,
     ) -> dict[str, Any]:
         """Mint a fresh credential, return the registration payload."""
@@ -102,6 +106,7 @@ class VirtualAuthenticator:
             credential_id=credential_id,
             private_key=private_key,
             sign_count=0,
+            user_id=user_id,
         )
 
         cose_pubkey = _build_cose_es256(private_key.public_key())
@@ -192,7 +197,10 @@ class VirtualAuthenticator:
                 "clientDataJSON": _b64u(client_data),
                 "authenticatorData": _b64u(auth_data),
                 "signature": _b64u(signature),
-                "userHandle": None,
+                # Resident credential: echo the registered user id back as
+                # the userHandle, the way a real authenticator does in the
+                # usernameless flow.
+                "userHandle": _b64u(cred.user_id) if cred.user_id else None,
             },
             "clientExtensionResults": {},
         }
