@@ -4,6 +4,55 @@
 
 {% block extra_head %}
 <style nonce="{{ request.csp_nonce }}">
+  .vendor-toolbar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+  .vendor-search {
+    position: relative;
+    flex: 1 1 320px;
+    min-width: 0;
+  }
+  .vendor-search svg {
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1rem;
+    height: 1rem;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+  .vendor-search input[type="search"] {
+    width: 100%;
+    padding: 0.65rem 0.9rem 0.65rem 2.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .vendor-search input[type="search"]::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+  .vendor-search input[type="search"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  /* Strip the browser's default clear-X chrome so the layout stays tidy. */
+  .vendor-search input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
   .vendor-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -26,20 +75,66 @@
     font-size: 0.75rem;
     color: var(--text-muted);
   }
+  .vendor-tile[hidden] { display: none; }
+  .vendor-empty {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0.5rem 0 0;
+  }
+
+  /* native <dialog>: same chrome the app already uses for cards */
+  dialog.vendor-modal {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text);
+    padding: 1.5rem;
+    max-width: min(560px, 92vw);
+    width: 100%;
+  }
+  dialog.vendor-modal::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+  }
+  dialog.vendor-modal h2 { margin: 0 0 1rem; }
+  dialog.vendor-modal .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
-  <h1>Vendors</h1>
-  <p class="meta">
-    {{ vendors|length }} vendor{{ vendors|length|pluralize }} registered.
-    Any researcher can register a vendor before filing a finding.
-  </p>
+  <div class="page-head">
+    <div class="titles">
+      <h1>Vendors</h1>
+      <p class="meta">
+        {{ vendors|length }} vendor{{ vendors|length|pluralize }} registered.
+        Any researcher can register a vendor before filing a finding.
+      </p>
+    </div>
+    <span class="row-actions">
+      <button type="button" id="open-register" class="btn">Register vendor</button>
+    </span>
+  </div>
+
+  <div class="vendor-toolbar">
+    <label class="vendor-search" for="vendor-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m20 20-3.5-3.5"></path>
+      </svg>
+      <input type="search" id="vendor-search" placeholder="Search by name or slug…"
+             autocomplete="off" aria-label="Search vendors">
+    </label>
+  </div>
 </div>
 
-<div class="card">
-  <h2>Register a vendor</h2>
+<dialog id="register-modal" class="vendor-modal" aria-labelledby="register-modal-title">
+  <h2 id="register-modal-title">Register a vendor</h2>
   <form method="post" action="{% url 'vendors:new' %}">
     {% csrf_token %}
     <div class="field-grid">
@@ -63,24 +158,64 @@
       <label for="id_description">Description (optional)</label>
       {{ form.description }}
     </div>
-    <button type="submit">Register vendor</button>
+    <div class="modal-actions">
+      <button type="button" id="cancel-register" class="btn btn-secondary">Cancel</button>
+      <button type="submit">Register vendor</button>
+    </div>
   </form>
-</div>
+</dialog>
 
 <div class="card">
   <h2>Registered vendors</h2>
   {% if vendors %}
-  <div class="vendor-grid">
+  <div class="vendor-grid" id="vendor-grid">
     {% for v in vendors %}
-    <div class="vendor-tile">
+    <div class="vendor-tile" data-search="{{ v.slug|lower }} {{ v.name|lower }}">
       <h3><a href="{% url 'vendors:detail' v.slug %}">{{ v.name }}</a></h3>
       <p class="meta mono">{{ v.slug }}</p>
       <span class="findings-count">{{ v.findings.count }} finding{{ v.findings.count|pluralize }}</span>
     </div>
     {% endfor %}
   </div>
+  <p id="vendor-empty" class="vendor-empty" hidden>No vendors match that search.</p>
   {% else %}
-  <p class="subtle">No vendors yet. Use the form above to register the first one.</p>
+  <p class="subtle">No vendors yet. Use the Register vendor button to create the first one.</p>
   {% endif %}
 </div>
+
+<script nonce="{{ request.csp_nonce }}">
+(() => {
+  const openBtn = document.getElementById("open-register");
+  const cancelBtn = document.getElementById("cancel-register");
+  const modal = document.getElementById("register-modal");
+  const shouldOpen = {% if form_open %}true{% else %}false{% endif %};
+
+  // showModal() is a no-op + console error if the dialog is already open,
+  // so guard. The check also lets a re-render with form_open=true open it
+  // automatically when validation failed server-side.
+  if (modal && typeof modal.showModal === "function") {
+    openBtn?.addEventListener("click", () => { if (!modal.open) modal.showModal(); });
+    cancelBtn?.addEventListener("click", () => modal.close());
+    if (shouldOpen) modal.showModal();
+  }
+
+  // Client-side filter. Compares the input value (lowercased) against each
+  // tile's `data-search` attribute, which is built server-side from already-
+  // escaped {{ v.slug|lower }} {{ v.name|lower }}. The value is only ever
+  // used as a string for substring lookup; it is never injected into HTML.
+  const search = document.getElementById("vendor-search");
+  const tiles = Array.from(document.querySelectorAll(".vendor-tile"));
+  const emptyMsg = document.getElementById("vendor-empty");
+  search?.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    let visible = 0;
+    for (const tile of tiles) {
+      const hit = !q || (tile.dataset.search || "").includes(q);
+      tile.hidden = !hit;
+      if (hit) visible++;
+    }
+    if (emptyMsg) emptyMsg.hidden = visible !== 0;
+  });
+})();
+</script>
 {% endblock %}
