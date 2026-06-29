@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models.functions import Lower
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_protect
@@ -40,7 +41,10 @@ def _require_edit(vendor: Vendor, user: object) -> None:
 @login_required(login_url="/super/login/")
 @require_safe
 def vendors_list(request: HttpRequest) -> HttpResponse:
-    rows = list(Vendor.objects.all().order_by("name"))
+    # Lower("name") so the sort is case-insensitive. Without it Postgres
+    # compares by codepoint and a vendor whose name starts with a lowercase
+    # letter lands after every uppercase Z.
+    rows = list(Vendor.objects.all().order_by(Lower("name")))
     return render(
         request,
         "tenant/vendors/list.html",
@@ -60,8 +64,9 @@ def vendor_new(request: HttpRequest) -> HttpResponse:
         vendor.save()
         messages.success(request, f"Vendor {vendor.name} created.")
         return redirect("vendors:detail", slug=vendor.slug)
-    # Re-render list with errors.
-    rows = list(Vendor.objects.all().order_by("name"))
+    # Re-render list with errors. form_open=True so the modal stays open
+    # showing the validation errors instead of vanishing behind the button.
+    rows = list(Vendor.objects.all().order_by(Lower("name")))
     return render(
         request,
         "tenant/vendors/list.html",

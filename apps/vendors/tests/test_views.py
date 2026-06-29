@@ -142,3 +142,38 @@ def test_delete_succeeds_when_no_findings(client: Client) -> None:
     response = client.post(f"/vendors/{vendor.slug}/delete/")
     assert response.status_code == 302
     assert not Vendor.objects.filter(slug="del").exists()
+
+
+@pytest.mark.django_db
+def test_list_sort_is_case_insensitive(client: Client) -> None:
+    """Lowercase-starting names mix with uppercase ones alphabetically.
+
+    Without `Lower("name")` Postgres sorts by codepoint, which places
+    every lowercase letter after every uppercase one and pushes a vendor
+    like `acme` after `Zenith`.
+    """
+    Vendor.objects.create(slug="zenith", name="Zenith")
+    Vendor.objects.create(slug="acme", name="acme")
+    Vendor.objects.create(slug="bravo", name="Bravo")
+
+    user = _user("sort@example.com")
+    client.force_login(user)
+    body = client.get("/vendors/").content.decode()
+
+    # Order in the rendered HTML must be acme, Bravo, Zenith (case-folded).
+    pos_acme = body.find('href="/vendors/acme/"')
+    pos_bravo = body.find('href="/vendors/bravo/"')
+    pos_zenith = body.find('href="/vendors/zenith/"')
+    assert -1 < pos_acme < pos_bravo < pos_zenith
+
+
+@pytest.mark.django_db
+def test_list_marks_modal_open_when_form_invalid(client: Client) -> None:
+    """A failed POST re-renders the list with `form_open=True` so the
+    template auto-opens the modal showing the errors."""
+    user = _user("mo@example.com")
+    client.force_login(user)
+    response = client.post("/vendors/new/", data={"slug": "", "name": ""})
+    assert response.status_code == 200
+    # The JS guard `const shouldOpen = ...true;` lands in the script block.
+    assert b"const shouldOpen = true;" in response.content
