@@ -27,3 +27,11 @@ def enroll_token(group: str, request: HttpRequest) -> str:
     if request.resolver_match is None:
         return ""
     return str(request.resolver_match.kwargs.get("token", ""))
+
+
+def session_user(group: str, request: HttpRequest) -> str:
+    """Per authenticated-user bucket; anonymous callers share one bucket."""
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        return "anonymous"
+    return str(user.pk)

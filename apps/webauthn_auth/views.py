@@ -1,6 +1,6 @@
 """WebAuthn ceremony HTTP endpoints.
 
-Five views:
+Seven views:
 
 - `enroll_page` (GET): renders the HTML+JS page that drives the
   in-browser ceremony for an enrollment-token holder. Sets the CSRF
@@ -15,6 +15,9 @@ Five views:
 - `login_finish_usernameless` (POST): verifies the assertion, resolves
   identity from the credential id + userHandle, and creates a Django
   session bound to the authenticated user.
+- `step_up_start` / `step_up_finish` (POST, signed-in users only): a fresh
+  passkey assertion from the session's own user, producing a one-shot,
+  purpose-bound, short-lived grant (e.g. required to mint an API token).
 """
 
 from __future__ import annotations
@@ -33,15 +36,17 @@ from django_ratelimit.decorators import ratelimit
 from apps.audit.models import AuditAction
 from apps.audit.services import audit
 from core.security.crypto import verify_token
-from core.security.ratelimit_keys import client_ip, enroll_token
+from core.security.ratelimit_keys import client_ip, enroll_token, session_user
 
 from .models import EnrollmentToken
 from .services import (
     WebAuthnError,
     finish_authentication_usernameless,
     finish_registration,
+    finish_step_up,
     start_authentication_usernameless,
     start_registration,
+    start_step_up,
 )
 
 if TYPE_CHECKING:
@@ -201,3 +206,66 @@ def login_finish_usernameless(request: HttpRequest) -> JsonResponse:
         target_label=user.email,
     )
     return JsonResponse({"ok": True, "redirect": "/super/dashboard/"})
+
+
+# --- step-up (fresh passkey assertion from an already signed-in user) -------
+#
+# JSON-only endpoints. Unauthenticated callers get a JSON 401 (not a login
+# redirect) because they are only ever driven by fetch(). CSRF-protected,
+# POST-only, rate-limited per IP and per user. Every ceremony failure
+# collapses to the same generic code.
+
+
+def _require_session_user(request: HttpRequest) -> JsonResponse | None:
+    if not request.user.is_authenticated or not request.user.is_active:
+        return JsonResponse({"error": "authentication_required"}, status=401)
+    return None
+
+
+@csrf_protect
+@require_POST
+@ratelimit(key=client_ip, rate="10/m", block=True)
+@ratelimit(key=session_user, rate="10/m", block=True)
+def step_up_start(request: HttpRequest) -> JsonResponse:
+    if (denied := _require_session_user(request)) is not None:
+        return denied
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid_json"}, status=400)
+    purpose = body.get("purpose") if isinstance(body, dict) else None
+    try:
+        options = start_step_up(request.user, request, str(purpose or ""))
+    except WebAuthnError:
+        return JsonResponse({"error": "step_up_failed"}, status=400)
+    return JsonResponse(options)
+
+
+@csrf_protect
+@require_POST
+@ratelimit(key=client_ip, rate="10/m", block=True)
+@ratelimit(key=session_user, rate="10/m", block=True)
+def step_up_finish(request: HttpRequest) -> JsonResponse:
+    if (denied := _require_session_user(request)) is not None:
+        return denied
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return JsonResponse({"error": "step_up_failed"}, status=400)
+    try:
+        purpose = finish_step_up(request.user, request, body)
+    except WebAuthnError:
+        return JsonResponse({"error": "step_up_failed"}, status=400)
+
+    audit(
+        action=AuditAction.STEP_UP_VERIFIED,
+        actor=request.user,
+        request=request,
+        target_kind="user",
+        target_id=str(request.user.id),
+        target_label=request.user.email,
+        metadata={"purpose": purpose},
+    )
+    return JsonResponse({"ok": True})

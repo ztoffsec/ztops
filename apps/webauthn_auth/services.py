@@ -247,6 +247,20 @@ def finish_authentication_usernameless(
         msg = "userHandle does not match credential owner"
         raise WebAuthnError(msg)
 
+    _verify_assertion_and_bump(cred, challenge, credential)
+    return cred.user
+
+
+def _verify_assertion_and_bump(
+    cred: WebAuthnCredential,
+    challenge: bytes,
+    credential: dict[str, Any],
+) -> None:
+    """Cryptographically verify an assertion for ``cred`` and bump its counter.
+
+    Shared by sign-in and step-up so both enforce the same rules: UV
+    required, exact RP id / origin, single challenge, sign-count clone check.
+    """
     try:
         verified = verify_authentication_response(
             credential=credential,
@@ -274,4 +288,126 @@ def finish_authentication_usernameless(
     cred.last_used_at = timezone.now()
     cred.save(update_fields=["sign_count", "last_used_at"])
 
-    return cred.user
+
+# --- step-up (re-authentication of an already signed-in user) ---------------
+#
+# Sensitive actions (minting an API token) require a fresh passkey assertion
+# from the *session's own user*, on top of the session cookie. This bounds
+# what a stolen session or an XSS payload can do: it cannot mint a long-lived
+# credential without the authenticator + PIN/biometric.
+#
+# Properties:
+#   - allow_credentials = only the session user's credentials; on finish the
+#     credential is looked up by (credential_id, user) so another user's
+#     passkey cannot satisfy it.
+#   - UV required; challenge single-use (pop'd before verify).
+#   - purpose-bound: start declares a purpose from STEP_UP_PURPOSES; the
+#     resulting grant can only be consumed for that purpose.
+#   - short-lived and one-shot: consume_step_up() pops the grant and checks
+#     it is younger than STEP_UP_MAX_AGE_SECONDS.
+
+# Purpose label (not a secret); bandit/ruff flag the name only.
+STEP_UP_PURPOSE_API_TOKEN_CREATE = "api_token_create"  # noqa: S105  # nosec B105
+STEP_UP_PURPOSES: frozenset[str] = frozenset({STEP_UP_PURPOSE_API_TOKEN_CREATE})
+
+_SESSION_STEPUP_CHALLENGE = "webauthn_stepup_challenge"
+_SESSION_STEPUP_GRANT = "webauthn_stepup_grant"
+
+
+def start_step_up(user: Any, request: HttpRequest, purpose: str) -> dict[str, Any]:
+    """Begin a step-up ceremony for the signed-in ``user``."""
+    if purpose not in STEP_UP_PURPOSES:
+        msg = "unknown step-up purpose"
+        raise WebAuthnError(msg)
+    cred_ids = list(user.credentials.values_list("credential_id", flat=True))
+    if not cred_ids:
+        msg = "user has no registered credentials"
+        raise WebAuthnError(msg)
+    options = generate_authentication_options(
+        rp_id=settings.WEBAUTHN_RP_ID,
+        allow_credentials=[PublicKeyCredentialDescriptor(id=bytes(c)) for c in cred_ids],
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+    request.session[_SESSION_STEPUP_CHALLENGE] = {
+        "challenge": _b64u_encode(options.challenge),
+        "user": str(user.id),
+        "purpose": purpose,
+    }
+    # Starting a new ceremony invalidates any unconsumed earlier grant.
+    request.session.pop(_SESSION_STEPUP_GRANT, None)
+    return json.loads(options_to_json(options))
+
+
+def finish_step_up(user: Any, request: HttpRequest, credential: dict[str, Any]) -> str:
+    """Verify the step-up assertion and record a one-shot grant in the session.
+
+    Returns the purpose the grant was issued for.
+    """
+    state = request.session.pop(_SESSION_STEPUP_CHALLENGE, None)
+    if not isinstance(state, dict) or state.get("user") != str(user.id):
+        msg = "no step-up ceremony in progress"
+        raise WebAuthnError(msg)
+    purpose = state.get("purpose")
+    if purpose not in STEP_UP_PURPOSES:
+        msg = "unknown step-up purpose"
+        raise WebAuthnError(msg)
+
+    raw_id = credential.get("id") if isinstance(credential, dict) else None
+    if not isinstance(raw_id, str) or not raw_id:
+        msg = "assertion missing credential id"
+        raise WebAuthnError(msg)
+    try:
+        credential_id = _b64u_decode(raw_id)
+    except (ValueError, TypeError) as exc:
+        msg = "malformed credential id"
+        raise WebAuthnError(msg) from exc
+
+    try:
+        cred = WebAuthnCredential.objects.get(credential_id=credential_id, user=user)
+    except WebAuthnCredential.DoesNotExist as exc:
+        msg = "credential not registered to this user"
+        raise WebAuthnError(msg) from exc
+
+    if not user.is_active:
+        msg = "user is inactive"
+        raise WebAuthnError(msg)
+
+    # userHandle is optional for non-discoverable assertions; when present it
+    # must name the session user.
+    user_handle_b64 = (credential.get("response") or {}).get("userHandle")
+    if user_handle_b64:
+        try:
+            user_handle = _b64u_decode(user_handle_b64).decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as exc:
+            msg = "malformed userHandle"
+            raise WebAuthnError(msg) from exc
+        if user_handle != str(user.id):
+            msg = "userHandle does not match session user"
+            raise WebAuthnError(msg)
+
+    _verify_assertion_and_bump(cred, _b64u_decode(state["challenge"]), credential)
+
+    request.session[_SESSION_STEPUP_GRANT] = {
+        "user": str(user.id),
+        "purpose": purpose,
+        "at": int(timezone.now().timestamp()),
+    }
+    return str(purpose)
+
+
+def consume_step_up(user: Any, request: HttpRequest, purpose: str) -> bool:
+    """Pop the step-up grant; True iff it is fresh, for ``user`` and ``purpose``.
+
+    One-shot: the grant is removed whether or not it matches, so a grant can
+    never be replayed for a second action.
+    """
+    grant = request.session.pop(_SESSION_STEPUP_GRANT, None)
+    if not isinstance(grant, dict):
+        return False
+    if grant.get("user") != str(user.id) or grant.get("purpose") != purpose:
+        return False
+    issued_at = grant.get("at")
+    if not isinstance(issued_at, int):
+        return False
+    age = int(timezone.now().timestamp()) - issued_at
+    return 0 <= age <= int(settings.STEP_UP_MAX_AGE_SECONDS)

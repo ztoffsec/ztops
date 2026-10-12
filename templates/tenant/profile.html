@@ -56,4 +56,13 @@
   <p class="subtle">No passkeys registered. Sign-in is impossible until at least one is bound.</p>
   {% endif %}
 </div>
+
+<div class="card">
+  <h2>API tokens</h2>
+  <p class="meta">
+    Scoped, short-lived bearer tokens for your research agents.
+    {% with n=request.user.api_tokens.count %}{{ n }} token{{ n|pluralize }} on record.{% endwith %}
+  </p>
+  <a class="btn btn-secondary" href="{% url 'api_tokens:list' %}">Manage API tokens</a>
+</div>
 {% endblock %}
