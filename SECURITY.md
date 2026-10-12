@@ -59,4 +59,4 @@ These are enforced by code, not policy:
 - Per-object access control (`can_user_view` / `can_user_edit`) on every finding, note, and attachment — no cross-user data exposure via a missing filter.
 - Rate limiting on the unauthenticated login / enrollment endpoints.
 - CSP, HSTS, COOP, COEP, X-Frame-Options on every response.
-- API tokens hashed at rest (argon2id), scoped, rotate-on-use for write scopes, idle-expire at 90 days.
+- API tokens (`/api/v1/`, `Authorization: Bearer`): hashed at rest (argon2id, plaintext shown once), scoped (deny by default), short-lived (30-day default, 90-day hard maximum enforced in the database), idle-expire after 14 days unused, instantly revocable by the owner or a superadmin. Minting a token requires a fresh passkey assertion (step-up). The API accepts bearer tokens only (session cookies never authenticate it), with per-token throttling and per-IP limits on failed authentication.

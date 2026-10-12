@@ -63,6 +63,7 @@ INSTALLED_APPS: list[str] = [
     "apps.findings",
     "apps.attachments",
     "apps.reports",
+    "apps.api",
     # Django built-ins
     "django.contrib.contenttypes",
     "django.contrib.auth",
@@ -236,6 +237,45 @@ SESSION_COOKIE_NAME = "ztops_sessionid"
 
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Strict"
+
+# ---------------------------------------------------------------------------
+# Agent API (`/api/v1/`) — bearer tokens only. See apps/api and SECURITY.md.
+#
+# - Bearer token auth is the ONLY authenticator (no SessionAuthentication ->
+#   cookies never authenticate an API call, so there is no CSRF surface).
+# - JSON in, JSON out; no browsable API, no OPTIONS metadata.
+# - Deny by default: IsAuthenticated + per-view declared token scopes.
+# - Per-token throttle; per-IP limiter on failed bearer auth.
+# ---------------------------------------------------------------------------
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ("apps.api.authentication.BearerTokenAuthentication",),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+        "apps.api.permissions.HasTokenScopes",
+    ),
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_PARSER_CLASSES": ("rest_framework.parsers.JSONParser",),
+    "DEFAULT_THROTTLE_CLASSES": ("apps.api.throttling.TokenRateThrottle",),
+    "DEFAULT_METADATA_CLASS": None,
+    "DEFAULT_VERSIONING_CLASS": None,
+    "UNAUTHENTICATED_USER": None,
+    "TEST_REQUEST_DEFAULT_FORMAT": "json",
+}
+
+# Token lifetime: default 30 days; the 90-day hard maximum is a code + DB
+# constraint (apps.api.models.MAX_LIFETIME), not a setting.
+API_TOKEN_DEFAULT_LIFETIME_DAYS = int(env("API_TOKEN_DEFAULT_LIFETIME_DAYS", "30"))
+# A token unused for this long is rejected even before it expires.
+API_TOKEN_IDLE_TIMEOUT_DAYS = int(env("API_TOKEN_IDLE_TIMEOUT_DAYS", "14"))
+API_TOKEN_MAX_ACTIVE_PER_USER = int(env("API_TOKEN_MAX_ACTIVE_PER_USER", "10"))
+# last_used_at is written at most once per window (no DB write per request).
+API_TOKEN_LAST_USED_RESOLUTION_SECONDS = 300
+API_TOKEN_THROTTLE_RATE = env("API_TOKEN_THROTTLE_RATE", "120/m")
+API_AUTH_FAILURE_RATE = env("API_AUTH_FAILURE_RATE", "10/m")
+
+# Step-up (fresh passkey assertion) grants are one-shot and expire quickly.
+STEP_UP_MAX_AGE_SECONDS = 120
 
 # ---------------------------------------------------------------------------
 # Logging

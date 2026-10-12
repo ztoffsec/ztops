@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}API tokens — ZTOps{% endblock %}
+
+{% block extra_head %}
+<style nonce="{{ request.csp_nonce }}">
+  .issued-token {
+    padding: 1rem;
+    border: 1px solid var(--success);
+    border-radius: 6px;
+    background: var(--bg);
+    word-break: break-all;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8125rem;
+    user-select: all;
+  }
+  .scope-list { list-style: none; padding: 0; margin: 0 0 1rem; }
+  .scope-list li { margin-bottom: 0.25rem; }
+  .scope-list label { display: inline; font-weight: 400; }
+  .token-status-active { color: var(--success); }
+  .token-status-inactive { color: var(--text-muted); }
+  .form-errors { color: var(--error); margin-bottom: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <p class="meta"><a href="{% url 'accounts:profile' %}">&larr; Profile</a></p>
+  <h1>API tokens</h1>
+  <p class="meta">
+    Bearer tokens for your research agents. Tokens act as you, limited to the
+    scopes you grant, and expire automatically. Unused tokens also expire after
+    a period of inactivity. Revoke any token you no longer need.
+  </p>
+</div>
+
+{% if issued_raw %}
+<div class="card">
+  <h2>New token: {{ issued_token.name }} (shown once)</h2>
+  <p class="meta">
+    Copy it now and store it in your agent's secret store. It cannot be shown
+    again. If you lose it, revoke it and create a new one.
+  </p>
+  <p class="issued-token" id="issued-token">{{ issued_raw }}</p>
+  <p class="meta">
+    Scopes: <span class="mono">{{ issued_token.scopes|join:", " }}</span>
+    &middot; Expires {{ issued_token.expires_at|date:"Y-m-d H:i" }} UTC
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Create a token</h2>
+  <form method="post" action="{% url 'api_tokens:list' %}" data-step-up-purpose="api_token_create" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="form-errors">{% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}</div>
+    {% endif %}
+
+    <label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+    {{ form.name }}
+    {% for e in form.name.errors %}<p class="form-errors">{{ e }}</p>{% endfor %}
+
+    <fieldset>
+      <legend>Scopes</legend>
+      <ul class="scope-list">
+        {% for cb in form.scopes %}
+          <li>{{ cb.tag }} <label for="{{ cb.id_for_label }}"><span class="mono">{{ cb.data.value }}</span> — {{ cb.choice_label }}</label></li>
+        {% endfor %}
+      </ul>
+      {% for e in form.scopes.errors %}<p class="form-errors">{{ e }}</p>{% endfor %}
+    </fieldset>
+
+    <label for="{{ form.lifetime_days.id_for_label }}">{{ form.lifetime_days.label }}</label>
+    {{ form.lifetime_days }}
+    {% for e in form.lifetime_days.errors %}<p class="form-errors">{{ e }}</p>{% endfor %}
+
+    <p class="meta">Creating a token requires confirming with your passkey.</p>
+    <button type="submit">Confirm with passkey &amp; create</button>
+    <output class="status" data-step-up-status aria-live="polite"></output>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Your tokens ({{ rows|length }})</h2>
+  {% if rows %}
+  <table class="table-cards">
+    <thead>
+      <tr>
+        <th>Name</th><th>Prefix</th><th>Scopes</th><th>Status</th>
+        <th>Expires</th><th>Last used</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}{% with t=row.token %}
+      <tr>
+        <td data-label="Name">{{ t.name }}</td>
+        <td class="mono" data-label="Prefix">ztops_{{ t.prefix }}_…</td>
+        <td class="mono" data-label="Scopes">{{ t.scopes|join:", " }}</td>
+        <td data-label="Status" class="{% if row.status == 'active' %}token-status-active{% else %}token-status-inactive{% endif %}">{{ row.status }}</td>
+        <td data-label="Expires">{{ t.expires_at|date:"Y-m-d H:i" }} UTC</td>
+        <td data-label="Last used">{{ t.last_used_at|date:"Y-m-d H:i"|default:"—" }}{% if t.last_used_at %} UTC{% endif %}</td>
+        <td class="actions no-label">
+          {% if not t.revoked_at %}
+          <form method="post" action="{% url 'api_tokens:revoke' t.id %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="btn-remove">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endwith %}{% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="subtle">No API tokens yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/step_up.js' %}" nonce="{{ request.csp_nonce }}"></script>
+{% endblock %}

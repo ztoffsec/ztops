@@ -4,6 +4,7 @@ Two URL spaces:
 - `/super/...` — superadmin shell: login, dashboard, logout,
   approvals, admin, audit. Gated by `@superadmin_required` where
   appropriate.
+- `/api/v1/...` — agent REST API, bearer-token auth only (apps.api).
 - everything else — the everyday team UI: findings, engagements,
   attachments. Gated by `@login_required` (any authenticated active
   user). No more tenant subdomains.
@@ -40,6 +41,9 @@ urlpatterns = [
     path("findings/artifacts/", include("apps.attachments.urls")),
     path("vendors/", include("apps.vendors.urls")),
     path("reports/", include("apps.reports.urls")),
+    path("api/v1/", include("apps.api.urls")),
+    path("super/profile/api-tokens/", include("apps.api.ui_urls")),
+    path("super/api-tokens/", include("apps.api.admin_urls")),
     path("super/", include("apps.accounts.urls")),
     path("super/approvals/", include("apps.approvals.urls")),
     # Report reviews sub-tab must precede the findings reviews include

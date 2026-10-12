@@ -22,4 +22,6 @@ urlpatterns = [
         views.login_finish_usernameless,
         name="login_finish_usernameless",
     ),
+    path("step-up/start/", views.step_up_start, name="step_up_start"),
+    path("step-up/finish/", views.step_up_finish, name="step_up_finish"),
 ]

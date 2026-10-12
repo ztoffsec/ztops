@@ -33,6 +33,12 @@ class AuditAction(models.TextChoices):
 
     # Credential lifecycle
     CREDENTIAL_REGISTERED = "credential_registered", "Credential Registered"
+    STEP_UP_VERIFIED = "step_up_verified", "Step-up Verified"
+
+    # API token lifecycle + API auth (metadata carries token_id, via)
+    API_TOKEN_CREATED = "api_token_created", "API Token Created"
+    API_TOKEN_REVOKED = "api_token_revoked", "API Token Revoked"
+    API_AUTH_FAILED = "api_auth_failed", "API Auth Failed"
 
     # Auth events
     USER_SIGNED_IN = "user_signed_in", "User Signed In"
